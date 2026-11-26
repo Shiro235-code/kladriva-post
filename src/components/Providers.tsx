@@ -87,13 +87,18 @@ function ActivityProvider({ children }: { children: React.ReactNode }) {
       setM(0);
       return;
     }
-    const [{ count }, { data }] = await Promise.all([
+    const [{ count }, { data }, { data: gdata }] = await Promise.all([
       sb().from("notifications").select("id", { count: "exact", head: true }).eq("user_id", uid).eq("read", false),
       sb().from("conversation_members").select("last_read_at, conversation:conversations(last_message_at)").eq("user_id", uid),
+      sb().from("group_members").select("last_read_at, group:groups(last_message_at)").eq("user_id", uid),
     ]);
     setN(count ?? 0);
     const rows = (data || []) as unknown as { last_read_at: string; conversation: { last_message_at: string } | null }[];
-    setM(rows.filter((r) => r.conversation && new Date(r.conversation.last_message_at) > new Date(r.last_read_at)).length);
+    const grows = (gdata || []) as unknown as { last_read_at: string; group: { last_message_at: string | null } | null }[];
+    setM(
+      rows.filter((r) => r.conversation && new Date(r.conversation.last_message_at) > new Date(r.last_read_at)).length +
+        grows.filter((r) => r.group?.last_message_at && new Date(r.group.last_message_at) > new Date(r.last_read_at)).length,
+    );
   }, [uid]);
 
   useEffect(() => {
@@ -103,6 +108,7 @@ function ActivityProvider({ children }: { children: React.ReactNode }) {
       .channel(`activity-${uid}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${uid}` }, refresh)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, refresh)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "group_messages" }, refresh)
       .subscribe();
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);

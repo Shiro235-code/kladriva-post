@@ -10,6 +10,7 @@ import { useToast } from "@/components/Providers";
 import { Feed } from "@/components/Feed";
 import { FollowButton } from "@/components/FollowButton";
 import { Avatar, Empty, Spinner } from "@/components/ui";
+import { GroupChat, GroupChatLocked } from "@/components/GroupChat";
 import { sb } from "@/lib/supabase";
 import type { Profile } from "@/lib/types";
 import { cx, displayName, groupColor, groupGradient, groupIcon, plural } from "@/lib/utils";
@@ -25,7 +26,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
   const [members, setMembers] = useState<(Profile & { role: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState<"posts" | "members">("posts");
+  const [tab, setTab] = useState<"chat" | "posts" | "members" | null>(null);
 
   const loadMembers = useCallback(async () => {
     const { data } = await sb().from("group_members").select("role, profile:profiles(*)").eq("group_id", id).order("joined_at");
@@ -46,6 +47,12 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
   }, [id, loadMembers]);
 
   const isMember = !!session && members.some((m) => m.id === session.user.id);
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  useEffect(() => {
+    if (members.length) setMembersLoaded(true);
+  }, [members.length]);
+  // Onglet par défaut : la discussion pour les membres, les publications sinon
+  const current = tab ?? (membersLoaded && isMember ? "chat" : "posts");
   const isOwner = !!session && group?.created_by === session.user.id;
 
   const toggle = async () => {
@@ -116,18 +123,27 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
         <div className="flex gap-6 border-b border-line mt-6 mb-4" role="tablist">
           {(
             [
+              ["chat", "Discussion"],
               ["posts", "Publications"],
               ["members", `Membres (${members.length})`],
             ] as const
           ).map(([t, label]) => (
-            <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cx("relative pb-3 text-[15px] font-semibold", tab === t ? "text-ink" : "text-muted hover:text-ink-2")}>
+            <button key={t} role="tab" aria-selected={current === t} onClick={() => setTab(t)} className={cx("relative pb-3 text-[15px] font-semibold", current === t ? "text-ink" : "text-muted hover:text-ink-2")}>
               {label}
-              {tab === t && <span className="absolute left-0 right-0 -bottom-px h-[3px] rounded-full bg-cobalt" />}
+              {current === t && <span className="absolute left-0 right-0 -bottom-px h-[3px] rounded-full bg-cobalt" />}
             </button>
           ))}
         </div>
 
-        {tab === "posts" ? (
+        {current === "chat" ? (
+          isMember ? (
+            <div className="panel overflow-hidden h-[calc(100dvh-220px)] min-h-[480px] flex">
+              <GroupChat group={group} className="flex-1" />
+            </div>
+          ) : (
+            <GroupChatLocked signedIn={!!session} onJoin={toggle} />
+          )
+        ) : current === "posts" ? (
           <>
             {session && !isMember && (
               <div className="panel p-4 mb-4 flex items-center justify-between gap-3">

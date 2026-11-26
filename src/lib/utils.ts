@@ -31,6 +31,13 @@ export function firstName(p?: { full_name?: string; username?: string } | null):
   return displayName(p).split(" ")[0];
 }
 
+const NAME_TONES = ["#2f4bff", "#d6336c", "#0b8f63", "#7b5cff", "#c2410c", "#1f6f8b", "#a16207"];
+/** Couleur stable par personne, pour les noms dans les discussions de groupe. */
+export function nameColor(seed?: string) {
+  const n = (seed || "").split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  return NAME_TONES[n % NAME_TONES.length];
+}
+
 export function cx(...c: (string | false | null | undefined)[]) {
   return c.filter(Boolean).join(" ");
 }

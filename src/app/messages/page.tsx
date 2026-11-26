@@ -11,8 +11,11 @@ import { Avatar, Modal, Spinner } from "@/components/ui";
 import { sb } from "@/lib/supabase";
 import type { Message, Profile } from "@/lib/types";
 import { cx, displayName, firstName, timeAgo } from "@/lib/utils";
+import { GroupChat } from "@/components/GroupChat";
+import { GroupMark } from "@/components/ui";
 
 type Conv = { id: string; last_message_at: string; other: Profile | null; otherReadAt: string | null; preview: string; mineLast: boolean; unread: boolean };
+type GConv = { id: string; name: string; color: string; icon: string; last_message_at: string | null; preview: string; who: string; unread: boolean };
 
 export default function MessagesPage() {
   return (
@@ -28,6 +31,8 @@ function MessagesInner() {
   const params = useSearchParams();
   const router = useRouter();
   const active = params.get("c");
+  const activeGroup = params.get("g");
+  const [gconvs, setGconvs] = useState<GConv[]>([]);
   const [convs, setConvs] = useState<Conv[]>([]);
   const [loading, setLoading] = useState(true);
   const [picker, setPicker] = useState(false);
@@ -73,8 +78,42 @@ function MessagesInner() {
           };
         }),
     );
+    // Discussions de groupe
+    const { data: gm } = await sb()
+      .from("group_members")
+      .select("last_read_at, group:groups(id,name,color,icon,last_message_at)")
+      .eq("user_id", uid);
+    const groupsRows = ((gm || []) as unknown as { last_read_at: string; group: { id: string; name: string; color: string; icon: string; last_message_at: string | null } | null }[]).filter((r, i, all) => r.group && all.findIndex((x) => x.group?.id === r.group!.id) === i);
+    const gids = groupsRows.map((r) => r.group!.id);
+    const gprev: Record<string, { text: string; sender: string }> = {};
+    if (gids.length) {
+      const { data: gmsgs } = await sb()
+        .from("group_messages")
+        .select("group_id, content, sender_id, sender:profiles!group_messages_sender_id_fkey(full_name,username)")
+        .in("group_id", gids)
+        .order("created_at", { ascending: false })
+        .limit(300);
+      for (const m of (gmsgs || []) as unknown as { group_id: string; content: string; sender_id: string; sender: { full_name: string; username: string } | null }[]) {
+        if (!gprev[m.group_id]) gprev[m.group_id] = { text: m.content, sender: m.sender_id === uid ? "Toi" : firstName(m.sender) };
+      }
+    }
+    setGconvs(
+      groupsRows.map((r) => {
+        const g = r.group!;
+        return {
+          id: g.id,
+          name: g.name,
+          color: g.color,
+          icon: g.icon,
+          last_message_at: g.last_message_at,
+          preview: gprev[g.id]?.text || "Aucun message pour l'instant",
+          who: gprev[g.id]?.sender || "",
+          unread: !!g.last_message_at && new Date(g.last_message_at) > new Date(r.last_read_at) && g.id !== activeGroup && gprev[g.id]?.sender !== "Toi",
+        };
+      }),
+    );
     setLoading(false);
-  }, [uid, active]);
+  }, [uid, active, activeGroup]);
 
   useEffect(() => {
     if (!authLoading && !session) router.replace("/auth");
@@ -87,6 +126,7 @@ function MessagesInner() {
       .channel(`inbox-${uid}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, () => loadConvs())
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "conversation_members" }, () => loadConvs())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "group_messages" }, () => loadConvs())
       .subscribe();
     return () => {
       sb().removeChannel(ch);
@@ -94,12 +134,19 @@ function MessagesInner() {
   }, [loadConvs, uid]);
 
   const current = convs.find((c) => c.id === active);
-  const shown = convs.filter((c) => !filter || displayName(c.other).toLowerCase().includes(filter.toLowerCase()));
+  const f = filter.toLowerCase();
+  type Item = { kind: "dm"; at: string; c: Conv } | { kind: "group"; at: string; g: GConv };
+  const items: Item[] = [
+    ...convs.filter((c) => !f || displayName(c.other).toLowerCase().includes(f)).map((c) => ({ kind: "dm" as const, at: c.last_message_at, c })),
+    ...gconvs.filter((g) => !f || g.name.toLowerCase().includes(f)).map((g) => ({ kind: "group" as const, at: g.last_message_at || "1970-01-01", g })),
+  ].sort((a, b) => +new Date(b.at) - +new Date(a.at));
+  const currentGroup = gconvs.find((g) => g.id === activeGroup);
+  const anyActive = !!active || !!activeGroup;
 
   return (
     <AppShell wide>
       <div className="panel overflow-hidden h-[calc(100dvh-156px)] lg:h-[calc(100dvh-44px)] flex">
-        <div className={cx("w-full md:w-[340px] 2xl:w-[400px] md:border-r border-line flex flex-col", active && "hidden md:flex")}>
+        <div className={cx("w-full md:w-[340px] 2xl:w-[400px] md:border-r border-line flex flex-col", anyActive && "hidden md:flex")}>
           <div className="flex items-center justify-between px-5 pt-5 pb-3">
             <h1 className="font-display text-2xl font-bold">Messages</h1>
             <button onClick={() => setPicker(true)} className="w-10 h-10 rounded-full bg-cobalt text-white grid place-items-center" title="Nouveau message" aria-label="Nouveau message">
@@ -115,7 +162,7 @@ function MessagesInner() {
           <div className="flex-1 overflow-y-auto scroll-thin px-2 pb-2">
             {loading ? (
               <div className="flex justify-center py-10"><Spinner /></div>
-            ) : convs.length === 0 ? (
+            ) : convs.length === 0 && gconvs.length === 0 ? (
               <div className="text-center px-6 py-12">
                 <span className="w-14 h-14 rounded-2xl bg-cobalt-soft text-cobalt grid place-items-center mx-auto"><MessagesSquare size={26} /></span>
                 <p className="font-display text-xl font-semibold mt-2">Aucune conversation</p>
@@ -123,7 +170,24 @@ function MessagesInner() {
                 <button onClick={() => setPicker(true)} className="btn btn-primary mt-4">Nouveau message</button>
               </div>
             ) : (
-              shown.map((c) => (
+              items.map((it) =>
+                it.kind === "group" ? (
+                  <Link key={`g-${it.g.id}`} href={`/messages?g=${it.g.id}`} className={cx("flex items-center gap-3 p-3 rounded-2xl transition", it.g.id === activeGroup ? "bg-cobalt-soft" : "hover:bg-surface-2")}>
+                    <GroupMark color={it.g.color} icon={it.g.icon} size={50} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className={cx("truncate", it.g.unread ? "font-bold" : "font-semibold")}>{it.g.name}</p>
+                        {it.g.last_message_at && <span className={cx("text-xs shrink-0", it.g.unread ? "text-cobalt font-bold" : "text-muted")}>{timeAgo(it.g.last_message_at)}</span>}
+                      </div>
+                      <p className={cx("text-sm truncate", it.g.unread ? "text-ink font-semibold" : "text-muted")}>
+                        {it.g.who && `${it.g.who} : `}
+                        {it.g.preview}
+                      </p>
+                    </div>
+                    {it.g.unread && <span className="w-2.5 h-2.5 rounded-full bg-cobalt shrink-0" />}
+                  </Link>
+                ) : (
+                (({ c }) => (
                 <Link key={c.id} href={`/messages?c=${c.id}`} className={cx("flex items-center gap-3 p-3 rounded-2xl transition", c.id === active ? "bg-cobalt-soft" : "hover:bg-surface-2")}>
                   <Avatar profile={c.other} size={50} online={!!c.other && online.has(c.other.id)} />
                   <div className="min-w-0 flex-1">
@@ -138,20 +202,26 @@ function MessagesInner() {
                   </div>
                   {c.unread && <span className="w-2.5 h-2.5 rounded-full bg-cobalt shrink-0" />}
                 </Link>
-              ))
+                ))(it)
+                ),
+              )
             )}
           </div>
         </div>
 
-        <div className={cx("flex-1 flex-col min-w-0", active ? "flex" : "hidden md:flex")}>
-          {active && uid ? (
+        <div className={cx("flex-1 flex-col min-w-0", anyActive ? "flex" : "hidden md:flex")}>
+          {activeGroup && uid && currentGroup ? (
+            <GroupChat key={activeGroup} group={currentGroup} backHref="/messages" className="flex-1" onActivity={loadConvs} />
+          ) : activeGroup && loading ? (
+            <div className="flex-1 grid place-items-center"><Spinner /></div>
+          ) : active && uid ? (
             <Thread key={active} convId={active} conv={current} uid={uid} online={!!current?.other && online.has(current.other.id)} onActivity={() => { loadConvs(); refresh(); }} />
           ) : (
             <div className="flex-1 grid place-items-center text-center p-10">
               <div>
                 <div className="w-20 h-20 rounded-3xl bg-cobalt-soft text-cobalt grid place-items-center mx-auto"><MessagesSquare size={36} strokeWidth={1.8} /></div>
-                <p className="font-display text-2xl font-bold mt-4">Tes messages privés</p>
-                <p className="text-muted mt-1 max-w-xs mx-auto">Choisis une conversation, ou écris à quelqu&apos;un de ta promo.</p>
+                <p className="font-display text-2xl font-bold mt-4">Tes messages</p>
+                <p className="text-muted mt-1 max-w-xs mx-auto">Choisis une conversation privée ou une discussion de groupe, ou écris à quelqu&apos;un de ta promo.</p>
                 <button onClick={() => setPicker(true)} className="btn btn-primary mt-5">Nouveau message</button>
               </div>
             </div>
