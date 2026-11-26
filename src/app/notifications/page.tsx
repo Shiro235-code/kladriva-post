@@ -31,6 +31,8 @@ function describe(n: Notification): { icon: React.ReactNode; text: React.ReactNo
       return { icon: <UserPlus size={13} className="text-mint" />, text: <>{who} s&apos;est abonné à toi</>, href: n.actor ? `/u/${n.actor.username}` : "/feed" };
     case "group_join":
       return { icon: <Users size={13} className="text-mint" />, text: <>{who} a rejoint <b className="font-semibold">{n.group?.name || "ton groupe"}</b></>, href: n.group ? `/groups/${n.group.id}` : "/groups" };
+    case "group_add":
+      return { icon: <UserPlus size={13} className="text-cobalt" />, text: <>{who} t&apos;a ajouté au groupe <b className="font-semibold">{n.group?.name || ""}</b></>, href: n.group ? `/messages?g=${n.group.id}` : "/messages" };
     case "comment_like":
       return { icon: <Heart size={12} className="text-coral" fill="currentColor" />, text: <>{who} a aimé ton commentaire</>, href: post };
   }
@@ -46,7 +48,7 @@ export default function NotificationsPage() {
   const [filter, setFilter] = useState<"all" | "unread">("all");
 
   useEffect(() => {
-    if (!authLoading && !session) router.replace("/auth");
+    if (!authLoading && !session) router.replace(`/auth?next=${encodeURIComponent(location.pathname + location.search)}`);
   }, [authLoading, session, router]);
 
   const load = useCallback(async () => {

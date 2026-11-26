@@ -13,6 +13,7 @@ import { Avatar, Empty, Modal, Spinner } from "@/components/ui";
 import { sb } from "@/lib/supabase";
 import type { Profile, Stats } from "@/lib/types";
 import { badgesFor, cx, displayName } from "@/lib/utils";
+import { compressImage } from "@/lib/media";
 
 export default function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const { username } = use(params);
@@ -258,10 +259,11 @@ function EditProfile({ profile, onClose, onSaved }: { profile: Profile; onClose:
 
   const upload = async (f?: File) => {
     if (!f || !f.type.startsWith("image/")) return;
-    if (f.size > 4 * 1024 * 1024) return setError("Photo trop lourde (4 Mo max).");
+    if (f.size > 25 * 1024 * 1024) return setError("Photo trop lourde (25 Mo max).");
     setUploading(true);
-    const path = `${profile.id}/avatar-${Date.now()}.${f.name.split(".").pop() || "jpg"}`;
-    const { error } = await sb().storage.from("media").upload(path, f, { contentType: f.type });
+    const small = await compressImage(f, { maxSize: 512, quality: 0.85, square: true });
+    const path = `${profile.id}/avatar-${Date.now()}.${small.name.split(".").pop() || "jpg"}`;
+    const { error } = await sb().storage.from("media").upload(path, small, { contentType: small.type, cacheControl: "31536000" });
     setUploading(false);
     if (error) return setError("La photo n'a pas pu être envoyée.");
     setForm((s) => ({ ...s, avatar_url: sb().storage.from("media").getPublicUrl(path).data.publicUrl }));

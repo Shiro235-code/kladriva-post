@@ -12,7 +12,7 @@ export default function SavedPage() {
   const { session, loading } = useAuth();
   const router = useRouter();
   useEffect(() => {
-    if (!loading && !session) router.replace("/auth");
+    if (!loading && !session) router.replace(`/auth?next=${encodeURIComponent(location.pathname + location.search)}`);
   }, [loading, session, router]);
 
   return (

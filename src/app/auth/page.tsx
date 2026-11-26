@@ -31,8 +31,10 @@ function AuthInner() {
   const [info, setInfo] = useState<string | null>(null);
 
   useEffect(() => {
-    if (session) router.replace("/feed");
-  }, [session, router]);
+    if (!session) return;
+    const next = params.get("next");
+    router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "/feed");
+  }, [session, router, params]);
 
   // Propose un nom d'utilisateur à partir du nom complet
   useEffect(() => {

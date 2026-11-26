@@ -6,11 +6,13 @@ import { sb } from "@/lib/supabase";
 import type { PostKind } from "@/lib/types";
 import { KINDS, cx, displayName } from "@/lib/utils";
 import { useAuth } from "./AuthProvider";
+import { compressImage, compressVideo } from "@/lib/media";
 import { useToast } from "./Providers";
 import { Avatar, Modal } from "./ui";
 
 const MAX_IMAGES = 4;
-const MAX_VIDEO_MB = 50;
+const MAX_VIDEO_MB = 50; // après compression
+const MAX_VIDEO_SOURCE_MB = 300; // avant compression
 const PLACEHOLDERS: Record<PostKind, string> = {
   update: "Qu'as-tu appris aujourd'hui ?",
   win: "Raconte ta victoire, même petite.",
@@ -76,6 +78,7 @@ export function ComposerModal({
   const [groupId, setGroupId] = useState<string>(initialGroupId || "");
   const [myGroups, setMyGroups] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
@@ -115,8 +118,8 @@ export function ComposerModal({
           setError("Formats vidéo acceptés : MP4, WebM ou MOV.");
           continue;
         }
-        if (f.size > MAX_VIDEO_MB * 1024 * 1024) {
-          setError(`La vidéo dépasse ${MAX_VIDEO_MB} Mo. Raccourcis-la ou compresse-la avant de la publier.`);
+        if (f.size > MAX_VIDEO_SOURCE_MB * 1024 * 1024) {
+          setError(`La vidéo dépasse ${MAX_VIDEO_SOURCE_MB} Mo. Raccourcis-la avant de la publier.`);
           continue;
         }
         // Une vidéo remplace les images : une publication = une vidéo, ou jusqu'à 4 images
@@ -127,8 +130,8 @@ export function ComposerModal({
         setError("Ce fichier n'est ni une image ni une vidéo.");
         continue;
       }
-      if (f.size > 8 * 1024 * 1024) {
-        setError(`« ${f.name} » dépasse 8 Mo.`);
+      if (f.size > 25 * 1024 * 1024) {
+        setError(`« ${f.name} » dépasse 25 Mo.`);
         continue;
       }
       next.push({ file: f, url: URL.createObjectURL(f) });
@@ -152,9 +155,22 @@ export function ComposerModal({
       const urls: string[] = [];
       let video_url: string | null = null;
       for (const p of picks) {
-        const ext = p.file.name.split(".").pop()?.toLowerCase() || (p.video ? "mp4" : "jpg");
+        let file = p.file;
+        if (p.video) {
+          setStage("Optimisation de la vidéo… 0 %");
+          file = await compressVideo(p.file, (r) => setStage(`Optimisation de la vidéo… ${Math.round(r * 100)} %`));
+          if (file.size > MAX_VIDEO_MB * 1024 * 1024) {
+            throw new Error(`Même optimisée, la vidéo dépasse ${MAX_VIDEO_MB} Mo. Raccourcis-la puis réessaie.`);
+          }
+          setStage("Envoi de la vidéo…");
+        } else {
+          setStage("Optimisation des images…");
+          file = await compressImage(p.file, { maxSize: 1920, quality: 0.82 });
+          setStage("Envoi…");
+        }
+        const ext = file.name.split(".").pop()?.toLowerCase() || (p.video ? "mp4" : "jpg");
         const path = `${session.user.id}/${crypto.randomUUID()}.${ext}`;
-        const up = await sb().storage.from("media").upload(path, p.file, { contentType: p.file.type, cacheControl: "31536000" });
+        const up = await sb().storage.from("media").upload(path, file, { contentType: file.type, cacheControl: "31536000" });
         if (up.error) {
           const tooBig = /size|large|payload/i.test(up.error.message);
           throw new Error(tooBig ? `Fichier trop lourd : ${MAX_VIDEO_MB} Mo maximum.` : `L'envoi ${p.video ? "de la vidéo" : "d'une image"} a échoué. Vérifie ta connexion et réessaie.`);
@@ -178,6 +194,7 @@ export function ComposerModal({
       setError(e instanceof Error ? e.message : "Publication impossible.");
     } finally {
       setBusy(false);
+      setStage(null);
     }
   };
 
@@ -276,7 +293,7 @@ export function ComposerModal({
             >
               <ImagePlus size={17} /> Images {!hasVideo && picks.length > 0 && `(${picks.length}/${MAX_IMAGES})`}
             </button>
-            <button onClick={() => videoRef.current?.click()} className="btn btn-soft !px-3 !py-2 text-[13px]" title={`Une vidéo, ${MAX_VIDEO_MB} Mo maximum`}>
+            <button onClick={() => videoRef.current?.click()} className="btn btn-soft !px-3 !py-2 text-[13px]" title="Une vidéo, optimisée automatiquement">
               <Video size={17} /> Vidéo
             </button>
             <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
@@ -285,11 +302,11 @@ export function ComposerModal({
           <div className="flex items-center gap-3">
             {remaining < 300 && <span className={cx("text-xs tabular-nums", remaining < 50 ? "text-coral" : "text-muted")}>{remaining}</span>}
             <button onClick={submit} disabled={!canPost} className="btn btn-primary !px-5">
-              {busy ? (hasVideo ? "Envoi de la vidéo…" : "Publication…") : "Publier"}
+              {busy ? stage || "Publication…" : "Publier"}
             </button>
           </div>
         </div>
-        <p className="text-xs text-muted mt-2 hidden sm:block">Ctrl + Entrée pour publier. Tu peux coller une capture d&apos;écran directement. Vidéo : MP4, WebM ou MOV, 50 Mo maximum.</p>
+        <p className="text-xs text-muted mt-2 hidden sm:block">Ctrl + Entrée pour publier. Tu peux coller une capture d&apos;écran. Les images et les vidéos sont optimisées automatiquement avant l&apos;envoi ; garde cet onglet ouvert pendant l&apos;optimisation d&apos;une vidéo.</p>
       </div>
     </Modal>
   );

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { Home, Compass, Users, MessageCircle, Bell, Trophy, Bookmark, User, LogOut, Search, Plus, Moon, Sun, PenLine, Flame, Sprout, Medal } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 import { useActivity, useTheme } from "./Providers";
-import { Avatar, Logo } from "./ui";
+import { Avatar, Logo, LogoMark } from "./ui";
 import { CommandPalette } from "./CommandPalette";
 import { ComposerModal } from "./Composer";
 import { FollowButton } from "./FollowButton";
@@ -14,8 +14,9 @@ import { sb } from "@/lib/supabase";
 import type { PostKind, Profile, Stats } from "@/lib/types";
 import { cx, displayName } from "@/lib/utils";
 
-export function AppShell({ children, wide = false, full = false }: { children: React.ReactNode; wide?: boolean; full?: boolean }) {
-  const { profile, session, signOut } = useAuth();
+export function AppShell({ children, wide = false, full = false, chat = false }: { children: React.ReactNode; wide?: boolean; full?: boolean; chat?: boolean }) {
+  const { profile, session, signOut, loading: authLoading } = useAuth();
+  const signedOut = !authLoading && !session;
   const { unreadNotifs, unreadMessages } = useActivity();
   const { theme, toggle } = useTheme();
   const path = usePathname();
@@ -43,7 +44,7 @@ export function AppShell({ children, wide = false, full = false }: { children: R
     };
   }, [session, router]);
 
-  const me = profile ? `/u/${profile.username}` : "/auth";
+  const me = profile ? `/u/${profile.username}` : signedOut ? "/auth" : "/moi";
   const nav = [
     { href: "/feed", label: "Accueil", icon: Home },
     { href: "/explorer", label: "Explorer", icon: Compass },
@@ -53,7 +54,7 @@ export function AppShell({ children, wide = false, full = false }: { children: R
     { href: "/classement", label: "Classement", icon: Trophy },
     { href: "/enregistres", label: "Enregistrés", icon: Bookmark, auth: true },
     { href: me, label: "Profil", icon: User },
-  ].filter((n) => !n.auth || session);
+  ].filter((n) => !n.auth || session || authLoading);
 
   const isActive = (href: string) => {
     if (href === "/feed") return path === "/feed";
@@ -70,7 +71,7 @@ export function AppShell({ children, wide = false, full = false }: { children: R
         <Link href="/feed" aria-label="Accueil"><Logo size={28} /></Link>
         <div className="flex items-center gap-0.5">
           <button onClick={() => setPalette(true)} className="icon-btn" aria-label="Rechercher"><Search size={20} /></button>
-          {session ? (
+          {!signedOut ? (
             <Link href="/notifications" className="icon-btn relative" aria-label="Notifications">
               <Bell size={20} />
               <Dot n={unreadNotifs} />
@@ -81,9 +82,10 @@ export function AppShell({ children, wide = false, full = false }: { children: R
         </div>
       </header>
 
-      <div className="flex gap-6 xl:gap-8 2xl:gap-10 px-3 sm:px-4 lg:px-6 2xl:px-10 w-full">
+      {chat && <ChatRail nav={nav} isActive={isActive} openCompose={openCompose} />}
+      <div className={cx("flex w-full", chat ? "lg:pl-[76px]" : "gap-6 xl:gap-8 2xl:gap-10 px-3 sm:px-4 lg:px-6 2xl:px-10")}>
         {/* Barre latérale */}
-        <aside className="hidden lg:flex flex-col w-[236px] xl:w-[256px] 2xl:w-[280px] shrink-0 sticky top-0 h-screen py-5">
+        <aside className={cx("hidden flex-col w-[236px] xl:w-[256px] 2xl:w-[280px] shrink-0 sticky top-0 h-screen py-5", !chat && "lg:flex")}>
           <Link href="/feed" className="px-3 mb-7 mt-1" aria-label="Accueil"><Logo /></Link>
           <nav className="flex flex-col gap-0.5" aria-label="Navigation principale">
             {nav.map(({ href, label, icon: Icon, badge }) => {
@@ -111,7 +113,7 @@ export function AppShell({ children, wide = false, full = false }: { children: R
             <PenLine size={17} /> Publier
           </button>
 
-          {!session && (
+          {signedOut && (
             <div className="mt-5 px-1">
               <p className="font-display text-lg font-semibold leading-tight">Tu apprends avec Kladriva ?</p>
               <p className="text-sm text-muted mt-1">Crée ton compte pour publier, réagir et échanger avec ta promo.</p>
@@ -149,10 +151,10 @@ export function AppShell({ children, wide = false, full = false }: { children: R
           </div>
         </aside>
 
-        <div className="flex-1 min-w-0 flex gap-6 xl:gap-8 2xl:gap-10">
-          <main className="flex-1 min-w-0 pt-4 lg:pt-5 pb-28 lg:pb-12">
+        <div className={cx("flex-1 min-w-0 flex", !chat && "gap-6 xl:gap-8 2xl:gap-10")}>
+          <main className={cx("flex-1 min-w-0", chat ? "p-0" : "pt-4 lg:pt-5 pb-28 lg:pb-12")}>
             {/* Barre de recherche (bureau) */}
-            <div className={cx("hidden lg:flex mb-5", !full && "max-w-[680px] 2xl:max-w-[780px] mx-auto", wide && "!hidden")}>
+            <div className={cx("hidden lg:flex mb-5", !full && "max-w-[680px] 2xl:max-w-[780px] mx-auto", (wide || chat) && "!hidden")}>
               <button
                 onClick={() => setPalette(true)}
                 className="flex items-center gap-2.5 bg-surface border border-line rounded-full pl-4 pr-2 h-11 w-full text-muted hover:border-line-strong transition"
@@ -164,7 +166,7 @@ export function AppShell({ children, wide = false, full = false }: { children: R
             </div>
             {children}
           </main>
-          {!wide && <RightRail />}
+          {!wide && !chat && <RightRail />}
         </div>
       </div>
 
@@ -182,6 +184,46 @@ export function AppShell({ children, wide = false, full = false }: { children: R
       <CommandPalette open={palette} onClose={() => setPalette(false)} />
       <ComposerModal open={compose.open} onClose={() => setCompose({ open: false })} initialGroupId={compose.groupId} initialKind={compose.kind} />
     </div>
+  );
+}
+
+/** Barre d'icônes étroite, utilisée dans la messagerie pour laisser toute la place aux discussions. */
+function ChatRail({
+  nav,
+  isActive,
+  openCompose,
+}: {
+  nav: { href: string; label: string; icon: typeof Home; badge?: number }[];
+  isActive: (href: string) => boolean;
+  openCompose: () => void;
+}) {
+  const { theme, toggle } = useTheme();
+  return (
+    <aside className="hidden lg:flex fixed left-0 top-0 bottom-0 w-[76px] z-30 flex-col items-center py-4 gap-1 bg-canvas">
+      <Link href="/feed" aria-label="Accueil" className="mb-4"><LogoMark size={38} /></Link>
+      {nav.map(({ href, label, icon: Icon, badge }) => {
+        const on = isActive(href);
+        return (
+          <Link
+            key={label}
+            href={href}
+            title={label}
+            aria-label={label}
+            aria-current={on ? "page" : undefined}
+            className={cx("relative w-12 h-12 rounded-2xl grid place-items-center transition", on ? "bg-surface text-cobalt border border-line" : "text-ink-2 hover:bg-surface/70")}
+          >
+            <Icon size={22} strokeWidth={on ? 2.4 : 1.9} />
+            <span className="absolute top-1.5 right-1.5"><Dot n={badge || 0} /></span>
+          </Link>
+        );
+      })}
+      <button onClick={openCompose} title="Publier" aria-label="Publier" className="mt-2 w-12 h-12 rounded-2xl bg-cobalt text-white grid place-items-center">
+        <PenLine size={20} />
+      </button>
+      <button onClick={toggle} title={theme === "dark" ? "Mode clair" : "Mode sombre"} aria-label="Changer de thème" className="mt-auto w-12 h-12 rounded-2xl grid place-items-center text-ink-2 hover:bg-surface/70">
+        {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
+      </button>
+    </aside>
   );
 }
 

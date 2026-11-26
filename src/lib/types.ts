@@ -45,6 +45,7 @@ export type Group = {
   description: string;
   color: string;
   icon: string;
+  avatar_url: string | null;
   created_by: string;
   created_at: string;
   group_members: { count: number }[];
@@ -55,6 +56,7 @@ export type Message = {
   conversation_id: string;
   sender_id: string;
   content: string;
+  image_url: string | null;
   created_at: string;
 };
 
@@ -63,8 +65,12 @@ export type GroupMessage = {
   group_id: string;
   sender_id: string;
   content: string;
+  image_url: string | null;
   created_at: string;
 };
+
+export type GroupLite = { id: string; name: string; description?: string; color: string; icon: string; avatar_url?: string | null; created_by?: string };
+export type Member = Profile & { role: "owner" | "admin" | "member" };
 
 export type Story = {
   id: string;
@@ -81,7 +87,7 @@ export type Notification = {
   id: string;
   user_id: string;
   actor_id: string | null;
-  type: "reaction" | "comment" | "reply" | "mention" | "follow" | "group_join" | "comment_like";
+  type: "reaction" | "comment" | "reply" | "mention" | "follow" | "group_join" | "comment_like" | "group_add";
   post_id: string | null;
   comment_id: string | null;
   group_id: string | null;

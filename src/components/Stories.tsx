@@ -7,6 +7,7 @@ import { sb } from "@/lib/supabase";
 import type { Story } from "@/lib/types";
 import { STORY_BGS, cx, displayName, firstName, timeAgo } from "@/lib/utils";
 import { useAuth } from "./AuthProvider";
+import { compressImage } from "@/lib/media";
 import { useToast } from "./Providers";
 import { Avatar, Modal } from "./ui";
 
@@ -308,8 +309,9 @@ function StoryCreate({ open, onClose, onCreated }: { open: boolean; onClose: () 
     setBusy(true);
     let image_url: string | null = null;
     if (file) {
-      const path = `${session.user.id}/story-${crypto.randomUUID()}.${file.name.split(".").pop() || "jpg"}`;
-      const up = await sb().storage.from("media").upload(path, file, { contentType: file.type });
+      const small = await compressImage(file, { maxSize: 1600, quality: 0.8 });
+      const path = `${session.user.id}/story-${crypto.randomUUID()}.${small.name.split(".").pop() || "jpg"}`;
+      const up = await sb().storage.from("media").upload(path, small, { contentType: small.type, cacheControl: "31536000" });
       if (up.error) {
         setBusy(false);
         return toast("L'image n'a pas pu être envoyée.", "error");
@@ -369,7 +371,7 @@ function StoryCreate({ open, onClose, onCreated }: { open: boolean; onClose: () 
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (!f) return;
-              if (f.size > 6 * 1024 * 1024) return toast("Image trop lourde (6 Mo max).", "error");
+              if (f.size > 25 * 1024 * 1024) return toast("Image trop lourde (25 Mo max).", "error");
               setFile(f);
               setPreview(URL.createObjectURL(f));
             }}
