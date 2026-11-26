@@ -1,31 +1,40 @@
 import type { Metadata, Viewport } from "next";
-import "@fontsource-variable/inter-tight";
-import "@fontsource/instrument-serif/400.css";
-import "@fontsource/instrument-serif/400-italic.css";
+import "@fontsource-variable/figtree";
+import "@fontsource-variable/bricolage-grotesque/opsz.css";
 import "./globals.css";
-import { AuthProvider } from "@/components/AuthProvider";
-
+import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "Kladriva Post — Montre ce que tu apprends",
-  description:
-    "Le réseau des apprenants Kladriva : partage tes avancées, commente, rejoins des groupes et échange en privé.",
+  title: { default: "Kladriva Post", template: "%s · Kladriva Post" },
+  description: "Le réseau des apprenants Kladriva : partage tes avancées chaque jour, reçois des retours et progresse avec ta promo.",
+  applicationName: "Kladriva Post",
+  appleWebApp: { capable: true, title: "Kladriva Post", statusBarStyle: "default" },
   openGraph: {
     title: "Kladriva Post",
     description: "Le réseau des apprenants Kladriva.",
     type: "website",
+    siteName: "Kladriva Post",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0f0f12",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#eef1f6" },
+    { media: "(prefers-color-scheme: dark)", color: "#0d1120" },
+  ],
 };
+
+// Applique le thème avant le premier rendu pour éviter le flash
+const themeScript = `(function(){try{var t=localStorage.getItem('kp-theme');if(!t){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}document.documentElement.dataset.theme=t}catch(e){}})()`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="fr">
+    <html lang="fr" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

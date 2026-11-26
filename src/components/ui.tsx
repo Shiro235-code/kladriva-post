@@ -1,81 +1,192 @@
 "use client";
 
-import { displayName } from "@/lib/utils";
+import Link from "next/link";
+import { useEffect, useRef } from "react";
+import { X } from "lucide-react";
+import { cx, displayName, kindOf, tokenize } from "@/lib/utils";
+import type { PostKind } from "@/lib/types";
 
-const TONES = ["#ff5b2e", "#4a32d4", "#17803d", "#1f5fd1", "#c22a6f", "#b7791f"];
+const TONES = ["#2f4bff", "#ff5470", "#0fa978", "#7b5cff", "#ff8a3d", "#1f6f8b", "#c2410c"];
 
-export function Avatar({
-  profile,
-  size = 40,
-}: {
-  profile?: { full_name?: string; username?: string; avatar_url?: string | null } | null;
-  size?: number;
-}) {
+type Who = { full_name?: string; username?: string; avatar_url?: string | null } | null | undefined;
+
+export function Avatar({ profile, size = 40, online, className }: { profile?: Who; size?: number; online?: boolean; className?: string }) {
   const name = displayName(profile);
   const initials = name
     .split(/\s+/)
     .slice(0, 2)
     .map((w) => w[0]?.toUpperCase())
     .join("");
-  const tone = TONES[(profile?.username || name).split("").reduce((a, c) => a + c.charCodeAt(0), 0) % TONES.length];
-  if (profile?.avatar_url && profile.avatar_url.startsWith("https://")) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={profile.avatar_url}
-        alt={name}
-        width={size}
-        height={size}
-        className="rounded-full object-cover shrink-0 bg-line"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
+  const seed = (profile?.username || name).split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  const tone = TONES[seed % TONES.length];
+  const img = profile?.avatar_url?.startsWith("https://") ? profile.avatar_url : null;
   return (
-    <div
-      aria-label={name}
-      className="rounded-full shrink-0 grid place-items-center font-semibold text-white select-none"
-      style={{ width: size, height: size, background: tone, fontSize: size * 0.38 }}
-    >
-      {initials || "?"}
-    </div>
+    <span className={cx("relative inline-block shrink-0 rounded-full", className)} style={{ width: size, height: size }}>
+      {img ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={img} alt={name} width={size} height={size} className="rounded-full object-cover w-full h-full bg-line" />
+      ) : (
+        <span
+          aria-label={name}
+          className="rounded-full w-full h-full grid place-items-center font-semibold text-white select-none font-display"
+          style={{ background: tone, fontSize: size * 0.4, letterSpacing: "-0.02em" }}
+        >
+          {initials || "?"}
+        </span>
+      )}
+      {online && (
+        <span
+          className="absolute rounded-full bg-mint border-surface"
+          style={{ width: size * 0.28, height: size * 0.28, right: 0, bottom: 0, borderWidth: Math.max(2, size * 0.06) }}
+          aria-label="En ligne"
+        />
+      )}
+    </span>
   );
 }
 
-export function Logo({ light = false }: { light?: boolean }) {
+/** Marque : un escalier qui monte — chaque marche est une avancée. */
+export function LogoMark({ size = 32, invert = false }: { size?: number; invert?: boolean }) {
   return (
-    <span className="inline-flex items-center gap-2 font-semibold tracking-tight text-[17px]">
-      <span
-        className="grid place-items-center rounded-[10px] w-8 h-8"
-        style={{ background: light ? "#fff" : "#0f0f12" }}
-      >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-          <path d="M3 2v12M3 8l7-6M3 8l7 6" stroke={light ? "#0f0f12" : "#fff"} strokeWidth="2.2" strokeLinecap="round" />
-          <circle cx="13" cy="8" r="1.8" fill="#ff5b2e" />
-        </svg>
-      </span>
-      <span className={light ? "text-white" : "text-ink"}>
-        Kladriva <span className="font-display italic font-normal text-[19px]">Post</span>
-      </span>
+    <span className="grid place-items-center rounded-[30%] shrink-0" style={{ width: size, height: size, background: invert ? "#fff" : "var(--cobalt)" }}>
+      <svg width={size * 0.56} height={size * 0.56} viewBox="0 0 20 20" fill="none" aria-hidden>
+        <path d="M2 17h5v-5h5V7h6" stroke={invert ? "#2f4bff" : "#fff"} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="18" cy="3.2" r="2.2" fill="#ffc531" />
+      </svg>
+    </span>
+  );
+}
+
+export function Logo({ light = false, size = 32 }: { light?: boolean; size?: number }) {
+  return (
+    <span className="inline-flex items-center gap-2.5">
+      <LogoMark size={size} invert={light} />
+      <span className={cx("font-display font-bold text-[19px] leading-none", light ? "text-white" : "text-ink")}>kladriva post</span>
     </span>
   );
 }
 
 export function Spinner({ className = "" }: { className?: string }) {
+  return <span className={cx("inline-block w-5 h-5 rounded-full border-2 border-line border-t-cobalt animate-spin", className)} aria-label="Chargement" />;
+}
+
+export function Empty({ emoji, title, text, children }: { emoji?: string; title: string; text?: string; children?: React.ReactNode }) {
   return (
-    <span
-      className={`inline-block w-5 h-5 rounded-full border-2 border-line border-t-ink animate-spin ${className}`}
-      aria-label="Chargement"
-    />
+    <div className="panel px-6 py-12 text-center">
+      {emoji && <p className="text-4xl mb-3">{emoji}</p>}
+      <p className="font-display text-2xl font-semibold">{title}</p>
+      {text && <p className="text-muted mt-1.5 max-w-sm mx-auto">{text}</p>}
+      {children && <div className="mt-5 flex justify-center">{children}</div>}
+    </div>
   );
 }
 
-export function Empty({ title, text, children }: { title: string; text?: string; children?: React.ReactNode }) {
+export function PostSkeleton() {
   return (
-    <div className="card p-10 text-center">
-      <p className="font-display text-3xl">{title}</p>
-      {text && <p className="text-muted mt-2 max-w-sm mx-auto">{text}</p>}
-      {children && <div className="mt-5">{children}</div>}
+    <div className="panel p-5">
+      <div className="flex gap-3 items-center">
+        <div className="skeleton w-11 h-11 !rounded-full" />
+        <div className="flex-1 space-y-2">
+          <div className="skeleton h-3.5 w-40" />
+          <div className="skeleton h-3 w-24" />
+        </div>
+      </div>
+      <div className="skeleton h-3.5 w-full mt-5" />
+      <div className="skeleton h-3.5 w-4/5 mt-2.5" />
+      <div className="skeleton h-48 w-full mt-4 !rounded-2xl" />
+    </div>
+  );
+}
+
+export function KindBadge({ kind, className }: { kind: PostKind; className?: string }) {
+  if (kind === "update") return null;
+  const k = kindOf(kind);
+  return (
+    <span className={cx("inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-0.5 rounded-lg", className)} style={{ background: k.bg, color: k.fg }}>
+      <span aria-hidden>{k.emoji}</span>
+      {k.short}
+    </span>
+  );
+}
+
+/** Texte enrichi : @mentions, #hashtags et liens. */
+export function RichText({ text, className }: { text: string; className?: string }) {
+  return (
+    <p className={cx("whitespace-pre-wrap break-words", className)}>
+      {tokenize(text).map((tk, i) =>
+        tk.t === "mention" ? (
+          <Link key={i} href={`/u/${tk.v.slice(1).toLowerCase()}`} className="text-cobalt font-semibold hover:underline" onClick={(e) => e.stopPropagation()}>
+            {tk.v}
+          </Link>
+        ) : tk.t === "tag" ? (
+          <Link key={i} href={`/explorer?q=${encodeURIComponent(tk.v)}`} className="text-cobalt hover:underline" onClick={(e) => e.stopPropagation()}>
+            {tk.v}
+          </Link>
+        ) : tk.t === "url" ? (
+          <a key={i} href={tk.v} target="_blank" rel="noopener noreferrer nofollow" className="text-cobalt underline underline-offset-2 break-all" onClick={(e) => e.stopPropagation()}>
+            {tk.v.replace(/^https?:\/\//, "").slice(0, 48)}
+            {tk.v.replace(/^https?:\/\//, "").length > 48 ? "…" : ""}
+          </a>
+        ) : (
+          <span key={i}>{tk.v}</span>
+        ),
+      )}
+    </p>
+  );
+}
+
+/** Fenêtre modale accessible (Échap pour fermer, clic à l'extérieur). */
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  wide,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title?: string;
+  children: React.ReactNode;
+  wide?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    ref.current?.focus();
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[60] bg-[#0d1120]/55 backdrop-blur-[3px] flex items-end sm:items-center justify-center sm:p-4 fade-in" onMouseDown={onClose}>
+      <div
+        ref={ref}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onMouseDown={(e) => e.stopPropagation()}
+        className={cx(
+          "sheet-in bg-surface w-full sm:rounded-3xl rounded-t-3xl shadow-[var(--shadow-pop)] max-h-[92vh] overflow-y-auto scroll-thin outline-none",
+          wide ? "sm:max-w-[640px]" : "sm:max-w-[460px]",
+        )}
+      >
+        {title && (
+          <div className="sticky top-0 z-10 bg-surface flex items-center justify-between px-5 pt-5 pb-3">
+            <p className="font-display text-xl font-semibold">{title}</p>
+            <button onClick={onClose} className="icon-btn -mr-2" aria-label="Fermer">
+              <X size={19} />
+            </button>
+          </div>
+        )}
+        {children}
+      </div>
     </div>
   );
 }

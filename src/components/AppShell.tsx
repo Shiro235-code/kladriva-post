@@ -3,154 +3,317 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Home, Users, MessageCircle, User, LogOut, Sparkles } from "lucide-react";
+import { Home, Compass, Users, MessageCircle, Bell, Trophy, Bookmark, User, LogOut, Search, Plus, Moon, Sun, PenLine } from "lucide-react";
 import { useAuth } from "./AuthProvider";
+import { useActivity, useTheme } from "./Providers";
 import { Avatar, Logo } from "./ui";
+import { CommandPalette } from "./CommandPalette";
+import { ComposerModal } from "./Composer";
+import { FollowButton } from "./FollowButton";
 import { sb } from "@/lib/supabase";
-import type { Profile } from "@/lib/types";
-import { cx, displayName, groupColor } from "@/lib/utils";
+import type { PostKind, Profile, Stats } from "@/lib/types";
+import { cx, displayName } from "@/lib/utils";
 
 export function AppShell({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   const { profile, session, signOut } = useAuth();
+  const { unreadNotifs, unreadMessages } = useActivity();
+  const { theme, toggle } = useTheme();
   const path = usePathname();
   const router = useRouter();
+  const [palette, setPalette] = useState(false);
+  const [compose, setCompose] = useState<{ open: boolean; groupId?: string; kind?: PostKind }>({ open: false });
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette((p) => !p);
+      }
+    };
+    const onCompose = (e: Event) => {
+      if (!session) return router.push("/auth");
+      const d = (e as CustomEvent).detail || {};
+      setCompose({ open: true, groupId: d.groupId, kind: d.kind });
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("kp:compose", onCompose);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("kp:compose", onCompose);
+    };
+  }, [session, router]);
+
+  const me = profile ? `/u/${profile.username}` : "/auth";
   const nav = [
-    { href: "/feed", label: "Fil", icon: Home },
+    { href: "/feed", label: "Accueil", icon: Home },
+    { href: "/explorer", label: "Explorer", icon: Compass },
     { href: "/groups", label: "Groupes", icon: Users },
-    { href: "/messages", label: "Messages", icon: MessageCircle },
-    { href: profile ? `/u/${profile.username}` : "/auth", label: "Profil", icon: User },
-  ];
-  const active = (href: string) => path === href || (href !== "/feed" && path.startsWith(href.split("/").slice(0, 2).join("/")));
+    { href: "/messages", label: "Messages", icon: MessageCircle, badge: unreadMessages, auth: true },
+    { href: "/notifications", label: "Notifications", icon: Bell, badge: unreadNotifs, auth: true },
+    { href: "/classement", label: "Classement", icon: Trophy },
+    { href: "/enregistres", label: "Enregistrés", icon: Bookmark, auth: true },
+    { href: me, label: "Profil", icon: User },
+  ].filter((n) => !n.auth || session);
+
+  const isActive = (href: string) => {
+    if (href === "/feed") return path === "/feed";
+    if (href.startsWith("/u/")) return path === href;
+    return path.startsWith(href);
+  };
+
+  const openCompose = () => (session ? setCompose({ open: true }) : router.push("/auth"));
 
   return (
     <div className="min-h-screen">
-      {/* Barre mobile */}
-      <header className="lg:hidden sticky top-0 z-30 bg-bg/85 backdrop-blur border-b border-line px-4 h-14 flex items-center justify-between">
-        <Link href="/feed"><Logo /></Link>
-        {session ? (
-          <Link href={profile ? `/u/${profile.username}` : "/feed"}><Avatar profile={profile} size={32} /></Link>
-        ) : (
-          <Link href="/auth" className="btn btn-primary !py-2 !px-4 text-sm">Rejoindre</Link>
-        )}
+      {/* En-tête mobile */}
+      <header className="lg:hidden sticky top-0 z-30 bg-canvas/85 backdrop-blur-md border-b border-line px-4 h-14 flex items-center justify-between">
+        <Link href="/feed" aria-label="Accueil"><Logo size={28} /></Link>
+        <div className="flex items-center gap-0.5">
+          <button onClick={() => setPalette(true)} className="icon-btn" aria-label="Rechercher"><Search size={20} /></button>
+          {session ? (
+            <Link href="/notifications" className="icon-btn relative" aria-label="Notifications">
+              <Bell size={20} />
+              <Dot n={unreadNotifs} />
+            </Link>
+          ) : (
+            <Link href="/auth" className="btn btn-primary !py-1.5 !px-3.5 text-sm ml-1">Rejoindre</Link>
+          )}
+        </div>
       </header>
 
-      <div className={cx("mx-auto flex gap-8 px-4 lg:px-6", wide ? "max-w-[1240px]" : "max-w-[1240px]")}>
+      <div className="mx-auto flex gap-6 xl:gap-8 px-3 sm:px-4 lg:px-6 max-w-[1280px]">
         {/* Barre latérale */}
-        <aside className="hidden lg:flex flex-col w-[240px] shrink-0 sticky top-0 h-screen py-6">
-          <Link href="/feed" className="px-3 mb-8"><Logo /></Link>
-          <nav className="flex flex-col gap-1">
-            {nav.map(({ href, label, icon: Icon }) => (
-              <Link
-                key={label}
-                href={href}
-                className={cx(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-2xl text-[15px] transition",
-                  active(href) ? "bg-ink text-white font-semibold" : "hover:bg-[#ebe9e1] text-ink",
-                )}
-              >
-                <Icon size={20} strokeWidth={active(href) ? 2.4 : 1.8} />
-                {label}
-              </Link>
-            ))}
+        <aside className="hidden lg:flex flex-col w-[236px] shrink-0 sticky top-0 h-screen py-5">
+          <Link href="/feed" className="px-3 mb-7 mt-1" aria-label="Accueil"><Logo /></Link>
+          <nav className="flex flex-col gap-0.5" aria-label="Navigation principale">
+            {nav.map(({ href, label, icon: Icon, badge }) => {
+              const on = isActive(href);
+              return (
+                <Link
+                  key={label}
+                  href={href}
+                  aria-current={on ? "page" : undefined}
+                  className={cx(
+                    "group flex items-center gap-3.5 px-3 py-2.5 rounded-2xl text-[15.5px] transition",
+                    on ? "font-bold text-ink bg-surface shadow-[0_1px_0_var(--line)] border border-line" : "text-ink-2 hover:bg-surface/70 border border-transparent",
+                  )}
+                >
+                  <span className="relative">
+                    <Icon size={21} strokeWidth={on ? 2.5 : 1.9} className={on ? "text-cobalt" : ""} />
+                    <Dot n={badge || 0} />
+                  </span>
+                  {label}
+                </Link>
+              );
+            })}
           </nav>
-          {session ? (
-            <button onClick={() => router.push("/feed#composer")} className="btn btn-accent mt-6 w-full !py-3">
-              <Sparkles size={16} /> Partager une avancée
-            </button>
-          ) : (
-            <div className="card p-4 mt-6">
-              <p className="font-semibold">Tu apprends avec Kladriva ?</p>
-              <p className="text-sm text-muted mt-1">Crée ton compte pour publier, commenter et échanger.</p>
-              <Link href="/auth" className="btn btn-primary w-full mt-3">Rejoindre</Link>
+          <button onClick={openCompose} className="btn btn-primary mt-5 w-full !py-3 text-[15px]">
+            <PenLine size={17} /> Publier
+          </button>
+
+          {!session && (
+            <div className="mt-5 px-1">
+              <p className="font-display text-lg font-semibold leading-tight">Tu apprends avec Kladriva ?</p>
+              <p className="text-sm text-muted mt-1">Crée ton compte pour publier, réagir et échanger avec ta promo.</p>
+              <Link href="/auth?mode=signup" className="btn btn-ink w-full mt-3">Créer mon compte</Link>
             </div>
           )}
-          <div className="mt-auto">
+
+          <div className="mt-auto flex flex-col gap-1">
+            <button onClick={toggle} className="flex items-center gap-3.5 px-3 py-2.5 rounded-2xl text-ink-2 hover:bg-surface/70 text-[15px]">
+              {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
+              {theme === "dark" ? "Mode clair" : "Mode sombre"}
+            </button>
             {session && (
-              <div className="flex items-center gap-3 p-2 rounded-2xl hover:bg-[#ebe9e1]">
-                <Avatar profile={profile} size={38} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold truncate">{displayName(profile)}</p>
-                  <p className="text-xs text-muted truncate">@{profile?.username}</p>
-                </div>
+              <div className="flex items-center gap-3 p-2 rounded-2xl hover:bg-surface/70">
+                <Link href={me} className="flex items-center gap-3 min-w-0 flex-1">
+                  <Avatar profile={profile} size={38} />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold truncate">{displayName(profile)}</span>
+                    <span className="block text-xs text-muted truncate">@{profile?.username}</span>
+                  </span>
+                </Link>
                 <button
                   title="Se déconnecter"
-                  onClick={async () => { await signOut(); router.push("/"); }}
-                  className="p-2 rounded-full hover:bg-white text-muted"
+                  aria-label="Se déconnecter"
+                  onClick={async () => {
+                    await signOut();
+                    router.push("/");
+                  }}
+                  className="icon-btn"
                 >
-                  <LogOut size={16} />
+                  <LogOut size={17} />
                 </button>
               </div>
             )}
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 py-6 pb-28 lg:pb-10">{children}</main>
-
-        {!wide && <RightRail />}
+        <div className="flex-1 min-w-0 flex gap-6 xl:gap-8">
+          <main className="flex-1 min-w-0 pt-4 lg:pt-5 pb-28 lg:pb-12">
+            {/* Barre de recherche (bureau) */}
+            <div className={cx("hidden lg:flex justify-end mb-4", wide && "!hidden")}>
+              <button
+                onClick={() => setPalette(true)}
+                className="flex items-center gap-2.5 bg-surface border border-line rounded-full pl-4 pr-2 h-10 w-[300px] text-muted hover:border-line-strong transition"
+              >
+                <Search size={17} />
+                <span className="flex-1 text-left text-sm">Rechercher</span>
+                <kbd className="text-[11px] border border-line rounded-md px-1.5 py-0.5 bg-surface-2">Ctrl K</kbd>
+              </button>
+            </div>
+            {children}
+          </main>
+          {!wide && <RightRail />}
+        </div>
       </div>
 
       {/* Navigation mobile */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-line grid grid-cols-4 h-16">
-        {nav.map(({ href, label, icon: Icon }) => (
-          <Link key={label} href={href} className={cx("flex flex-col items-center justify-center gap-0.5 text-[11px]", active(href) ? "text-ink font-semibold" : "text-muted")}>
-            <Icon size={21} strokeWidth={active(href) ? 2.4 : 1.8} />
-            {label}
-          </Link>
-        ))}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-surface/95 backdrop-blur-md border-t border-line h-[68px] grid grid-cols-5 items-center pb-[env(safe-area-inset-bottom)]" aria-label="Navigation">
+        <MobileTab href="/feed" label="Accueil" icon={Home} on={isActive("/feed")} />
+        <MobileTab href="/groups" label="Groupes" icon={Users} on={isActive("/groups")} />
+        <button onClick={openCompose} className="justify-self-center w-12 h-12 rounded-2xl bg-cobalt text-white grid place-items-center shadow-[var(--shadow-pop)]" aria-label="Publier">
+          <Plus size={24} strokeWidth={2.5} />
+        </button>
+        <MobileTab href="/messages" label="Messages" icon={MessageCircle} on={isActive("/messages")} badge={unreadMessages} />
+        <MobileTab href={me} label="Profil" icon={User} on={isActive(me)} />
       </nav>
+
+      <CommandPalette open={palette} onClose={() => setPalette(false)} />
+      <ComposerModal open={compose.open} onClose={() => setCompose({ open: false })} initialGroupId={compose.groupId} initialKind={compose.kind} />
     </div>
   );
 }
 
+function Dot({ n }: { n: number }) {
+  if (!n) return null;
+  return (
+    <span className="absolute -top-1.5 -right-2 min-w-[17px] h-[17px] px-1 rounded-full bg-coral text-white text-[10px] font-bold grid place-items-center border-2 border-canvas">
+      {n > 9 ? "9+" : n}
+    </span>
+  );
+}
+
+function MobileTab({ href, label, icon: Icon, on, badge = 0 }: { href: string; label: string; icon: typeof Home; on: boolean; badge?: number }) {
+  return (
+    <Link href={href} className={cx("flex flex-col items-center justify-center gap-0.5 text-[11px]", on ? "text-cobalt font-bold" : "text-muted")} aria-current={on ? "page" : undefined}>
+      <span className="relative">
+        <Icon size={22} strokeWidth={on ? 2.5 : 1.9} />
+        <Dot n={badge} />
+      </span>
+      {label}
+    </Link>
+  );
+}
+
+/* ---------------- Colonne de droite ---------------- */
 function RightRail() {
-  const [members, setMembers] = useState<Profile[]>([]);
-  const [groups, setGroups] = useState<{ id: string; name: string; color: string; group_members: { count: number }[] }[]>([]);
+  const { session, profile } = useAuth();
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [top, setTop] = useState<{ p: Profile; score: number }[]>([]);
+  const [suggest, setSuggest] = useState<Profile[]>([]);
 
   useEffect(() => {
-    sb().from("profiles").select("*").order("created_at", { ascending: false }).limit(5).then(({ data }) => setMembers((data as Profile[]) || []));
-    sb().from("groups").select("id,name,color,group_members(count)").order("created_at", { ascending: false }).limit(5).then(({ data }) => setGroups((data as typeof groups) || []));
+    sb()
+      .rpc("leaderboard", { days_back: 7 })
+      .then(async ({ data }) => {
+        const rows = ((data as { user_id: string; score: number }[]) || []).slice(0, 3);
+        if (!rows.length) return setTop([]);
+        const { data: ps } = await sb().from("profiles").select("*").in("id", rows.map((r) => r.user_id));
+        setTop(rows.map((r) => ({ p: (ps as Profile[]).find((x) => x.id === r.user_id)!, score: r.score })).filter((x) => x.p));
+      });
   }, []);
 
-  return (
-    <aside className="hidden xl:block w-[300px] shrink-0 py-6 sticky top-0 h-screen overflow-y-auto scroll-thin">
-      <div className="card p-5">
-        <p className="text-xs uppercase tracking-[0.14em] text-muted font-semibold">Groupes</p>
-        <div className="mt-3 flex flex-col gap-1">
-          {groups.length === 0 && <p className="text-sm text-muted">Aucun groupe pour l&apos;instant.</p>}
-          {groups.map((g) => {
-            const c = groupColor(g.color);
-            return (
-              <Link key={g.id} href={`/groups/${g.id}`} className="flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-bg">
-                <span className="w-9 h-9 rounded-xl grid place-items-center font-bold" style={{ background: c.bg, color: c.fg }}>
-                  {g.name[0]?.toUpperCase()}
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold truncate">{g.name}</span>
-                  <span className="block text-xs text-muted">{g.group_members?.[0]?.count ?? 0} membres</span>
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-        <Link href="/groups" className="text-sm font-semibold mt-3 inline-block hover:underline">Voir tous les groupes →</Link>
-      </div>
+  useEffect(() => {
+    const uid = session?.user.id;
+    if (uid) sb().rpc("profile_stats", { uid }).then(({ data }) => setStats(data as Stats));
+    (async () => {
+      let exclude: string[] = [];
+      if (uid) {
+        const { data } = await sb().from("follows").select("following_id").eq("follower_id", uid);
+        exclude = [uid, ...(data || []).map((r) => r.following_id)];
+      }
+      let q = sb().from("profiles").select("*").order("created_at", { ascending: false }).limit(4);
+      if (exclude.length) q = q.not("id", "in", `(${exclude.join(",")})`);
+      const { data } = await q;
+      setSuggest((data as Profile[]) || []);
+    })();
+  }, [session]);
 
-      <div className="card p-5 mt-4">
-        <p className="text-xs uppercase tracking-[0.14em] text-muted font-semibold">Nouveaux apprenants</p>
-        <div className="mt-3 flex flex-col gap-1">
-          {members.map((m) => (
-            <Link key={m.id} href={`/u/${m.username}`} className="flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-bg">
-              <Avatar profile={m} size={36} />
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold truncate">{displayName(m)}</span>
-                <span className="block text-xs text-muted truncate">{m.headline || `@${m.username}`}</span>
-              </span>
-            </Link>
-          ))}
+  return (
+    <aside className="hidden xl:flex flex-col gap-6 w-[300px] shrink-0 py-5 sticky top-0 h-screen overflow-y-auto no-scrollbar">
+      {session && stats && <Momentum stats={stats} name={displayName(profile).split(" ")[0]} />}
+
+      <section>
+        <div className="flex items-baseline justify-between px-1 mb-2">
+          <h2 className="font-display text-lg font-semibold">Les plus actifs cette semaine</h2>
         </div>
-      </div>
-      <p className="text-xs text-muted mt-4 px-1">© {new Date().getFullYear()} Kladriva · Fait pour apprendre ensemble.</p>
+        {top.length === 0 ? (
+          <p className="text-sm text-muted px-1">Personne n&apos;a encore publié cette semaine. Ouvre le bal.</p>
+        ) : (
+          <ol className="flex flex-col">
+            {top.map(({ p, score }, i) => (
+              <li key={p.id}>
+                <Link href={`/u/${p.username}`} className="flex items-center gap-3 px-1 py-2 rounded-xl hover:bg-surface/70">
+                  <span className="w-5 text-center font-display font-bold text-muted">{i + 1}</span>
+                  <Avatar profile={p} size={36} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold truncate">{displayName(p)}</span>
+                    <span className="block text-xs text-muted">{score} points</span>
+                  </span>
+                  {i === 0 && <span aria-hidden>🥇</span>}
+                </Link>
+              </li>
+            ))}
+          </ol>
+        )}
+        <Link href="/classement" className="text-sm font-semibold text-cobalt px-1 mt-1 inline-block hover:underline">Voir le classement</Link>
+      </section>
+
+      {suggest.length > 0 && (
+        <section>
+          <h2 className="font-display text-lg font-semibold px-1 mb-2">Apprenants à suivre</h2>
+          <ul className="flex flex-col">
+            {suggest.map((m) => (
+              <li key={m.id}>
+                <Link href={`/u/${m.username}`} className="flex items-center gap-3 px-1 py-2 rounded-xl hover:bg-surface/70">
+                  <Avatar profile={m} size={38} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold truncate">{displayName(m)}</span>
+                    <span className="block text-xs text-muted truncate">{m.headline || `@${m.username}`}</span>
+                  </span>
+                  {session && <FollowButton userId={m.id} compact />}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <p className="text-xs text-muted px-1 mt-auto">Kladriva Post, le réseau des apprenants Kladriva.</p>
     </aside>
+  );
+}
+
+/** Carte « élan » : la série de jours consécutifs avec publication. */
+function Momentum({ stats, name }: { stats: Stats; name: string }) {
+  const s = stats.streak;
+  const goal = s < 3 ? 3 : s < 7 ? 7 : s < 14 ? 14 : 30;
+  const pct = Math.min(100, Math.round((s / goal) * 100));
+  return (
+    <section className="rounded-3xl p-5 text-[#14182b] relative overflow-hidden" style={{ background: "linear-gradient(150deg, #ffd85c, #ffc531 55%, #ffab3d)" }}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-display text-[44px] font-bold leading-none tabular-nums">{s}</p>
+          <p className="font-semibold mt-1">{s > 1 ? "jours de suite" : "jour de série"}</p>
+        </div>
+        <span className="text-4xl" aria-hidden>{s > 0 ? "🔥" : "🌱"}</span>
+      </div>
+      <div className="h-2 bg-[#14182b]/15 rounded-full mt-4 overflow-hidden">
+        <div className="h-full bg-[#14182b] rounded-full transition-all duration-700" style={{ width: `${pct}%` }} />
+      </div>
+      <p className="text-sm mt-2.5 font-medium">
+        {s === 0 ? `Publie aujourd'hui pour lancer ta série, ${name}.` : `Encore ${goal - s} jour${goal - s > 1 ? "s" : ""} pour atteindre ${goal}.`}
+      </p>
+    </section>
   );
 }
