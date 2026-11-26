@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { Search, Hash, Users, FileText, CornerDownLeft } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import type { Profile } from "@/lib/types";
-import { cx, displayName, groupGradient } from "@/lib/utils";
-import { Avatar } from "./ui";
+import { cx, displayName } from "@/lib/utils";
+import { Avatar, GroupMark } from "./ui";
 
 type Item = { key: string; label: string; sub?: string; href: string; icon: React.ReactNode };
 
@@ -22,7 +22,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const router = useRouter();
   const [q, setQ] = useState("");
   const [people, setPeople] = useState<Profile[]>([]);
-  const [groups, setGroups] = useState<{ id: string; name: string; color: string; emoji: string }[]>([]);
+  const [groups, setGroups] = useState<{ id: string; name: string; color: string; icon: string }[]>([]);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -38,7 +38,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     const term = q.trim().replace(/[%,()]/g, "");
     const t = setTimeout(async () => {
       let pq = sb().from("profiles").select("*").limit(5);
-      let gq = sb().from("groups").select("id,name,color,emoji").limit(4);
+      let gq = sb().from("groups").select("id,name,color,icon").limit(4);
       if (term) {
         pq = pq.or(`username.ilike.%${term}%,full_name.ilike.%${term}%`);
         gq = gq.ilike("name", `%${term}%`);
@@ -67,11 +67,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         label: g.name,
         sub: "Groupe",
         href: `/groups/${g.id}`,
-        icon: (
-          <span className="w-[26px] h-[26px] rounded-lg grid place-items-center text-[13px]" style={{ background: groupGradient(g.color) }}>
-            {g.emoji || <span className="text-white font-bold">{g.name[0]}</span>}
-          </span>
-        ),
+        icon: <GroupMark color={g.color} icon={g.icon} size={26} />,
       }),
     );
     if (!term) SHORTCUTS.forEach((s) => list.push(s));

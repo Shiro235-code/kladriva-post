@@ -8,6 +8,7 @@ import { StoriesBar } from "@/components/Stories";
 import { useAuth } from "@/components/AuthProvider";
 import { openComposer } from "@/components/Composer";
 import { cx, firstName } from "@/lib/utils";
+import { UserPlus, Sprout } from "lucide-react";
 
 function greeting() {
   const h = new Date().getHours();
@@ -23,7 +24,7 @@ export default function FeedPage() {
 
   return (
     <AppShell>
-      <div className="max-w-[620px] mx-auto">
+      <div className="max-w-[680px] 2xl:max-w-[780px] mx-auto">
         <div className="mb-5">
           <h1 className="font-display text-[30px] sm:text-[36px] font-bold leading-[1.05]">
             {session ? `${greeting()}, ${firstName(profile)}` : "Ce que la promo apprend"}
@@ -70,8 +71,8 @@ export default function FeedPage() {
           mode={mode}
           empty={
             mode === "following"
-              ? { emoji: "👋", title: "Tu ne suis encore personne", text: "Suis d'autres apprenants pour voir leurs avancées ici.", action: <Link href="/explorer" className="btn btn-primary">Trouver des apprenants</Link> }
-              : { emoji: "🌱", title: "Le fil est encore vide", text: "Partage ta première avancée : c'est comme ça que tout commence.", action: session ? <button onClick={() => openComposer()} className="btn btn-primary">Publier une avancée</button> : undefined }
+              ? { icon: UserPlus, title: "Tu ne suis encore personne", text: "Suis d'autres apprenants pour voir leurs avancées ici.", action: <Link href="/explorer" className="btn btn-primary">Trouver des apprenants</Link> }
+              : { icon: Sprout, title: "Le fil est encore vide", text: "Partage ta première avancée : c'est comme ça que tout commence.", action: session ? <button onClick={() => openComposer()} className="btn btn-primary">Publier une avancée</button> : undefined }
           }
         />
       </div>

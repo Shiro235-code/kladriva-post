@@ -18,10 +18,11 @@ export type Post = {
   content: string;
   image_url: string | null;
   images: string[];
+  video_url: string | null;
   kind: PostKind;
   created_at: string;
   author: Profile;
-  group: { id: string; name: string; color: string; emoji: string } | null;
+  group: { id: string; name: string; color: string; icon: string } | null;
   likes: { user_id: string; type: ReactionType }[];
   comments: { count: number }[];
   saves: { user_id: string }[];
@@ -43,7 +44,7 @@ export type Group = {
   name: string;
   description: string;
   color: string;
-  emoji: string;
+  icon: string;
   created_by: string;
   created_at: string;
   group_members: { count: number }[];
@@ -97,6 +98,6 @@ export type Stats = {
 };
 
 export const POST_SELECT =
-  "*, author:profiles!posts_author_id_fkey(*), group:groups(id,name,color,emoji), likes(user_id,type), comments(count), saves(user_id)";
+  "*, author:profiles!posts_author_id_fkey(*), group:groups(id,name,color,icon), likes(user_id,type), comments(count), saves(user_id)";
 
 export const COMMENT_SELECT = "*, author:profiles!comments_author_id_fkey(*), comment_likes(user_id)";

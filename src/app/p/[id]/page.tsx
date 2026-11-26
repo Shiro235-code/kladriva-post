@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileX } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { PostCard } from "@/components/PostCard";
 import { Empty, PostSkeleton } from "@/components/ui";
@@ -30,7 +30,7 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
 
   return (
     <AppShell>
-      <div className="max-w-[620px] mx-auto">
+      <div className="max-w-[680px] 2xl:max-w-[780px] mx-auto">
         <button onClick={() => (history.length > 1 ? router.back() : router.push("/feed"))} className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink mb-4">
           <ArrowLeft size={16} /> Retour
         </button>
@@ -39,7 +39,7 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
         ) : post ? (
           <PostCard post={post} startOpen onDeleted={() => router.push("/feed")} />
         ) : (
-          <Empty emoji="🫥" title="Publication introuvable" text="Elle a peut-être été supprimée par son auteur.">
+          <Empty icon={FileX} title="Publication introuvable" text="Elle a peut-être été supprimée par son auteur.">
             <Link href="/feed" className="btn btn-primary">Retour au fil</Link>
           </Empty>
         )}

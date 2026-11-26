@@ -3,16 +3,15 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Users } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/Providers";
 import { Empty, Modal, Spinner } from "@/components/ui";
 import { sb } from "@/lib/supabase";
 import type { Group } from "@/lib/types";
-import { GROUP_PALETTE, cx, groupColor, groupGradient, plural } from "@/lib/utils";
+import { GROUP_ICONS, GROUP_PALETTE, cx, groupColor, groupGradient, groupIcon, plural } from "@/lib/utils";
 
-const EMOJIS = ["💻", "🎨", "🤖", "📊", "📱", "🧠", "🚀", "📚", "🎬", "🌍", "⚙️", "🔐"];
 
 export default function GroupsPage() {
   const { session } = useAuth();
@@ -44,8 +43,8 @@ export default function GroupsPage() {
   const discover = filtered.filter((g) => !mine.includes(g.id));
 
   return (
-    <AppShell>
-      <div className="max-w-[720px] mx-auto">
+    <AppShell full>
+      <div className="w-full">
         <div className="flex items-end justify-between gap-4">
           <div>
             <h1 className="font-display text-[34px] font-bold leading-tight">Groupes</h1>
@@ -65,7 +64,7 @@ export default function GroupsPage() {
           <div className="flex justify-center py-16"><Spinner /></div>
         ) : groups.length === 0 ? (
           <div className="mt-6">
-            <Empty emoji="🫂" title="Aucun groupe pour l'instant" text="Crée le premier pour ton module ou ton équipe projet.">
+            <Empty icon={Users} title="Aucun groupe pour l'instant" text="Crée le premier pour ton module ou ton équipe projet.">
               {session && <button onClick={() => setCreating(true)} className="btn btn-primary">Créer un groupe</button>}
             </Empty>
           </div>
@@ -86,16 +85,17 @@ function GroupGrid({ title, list, mine }: { title: string; list: Group[]; mine?:
   return (
     <section className="mt-8">
       <h2 className="font-display text-xl font-semibold mb-3">{title}</h2>
-      <div className="grid sm:grid-cols-2 gap-3">
+      <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
         {list.map((g) => {
           const c = groupColor(g.color);
+          const Icon = groupIcon(g.icon);
           return (
             <Link key={g.id} href={`/groups/${g.id}`} className="panel overflow-hidden group hover:border-line-strong transition">
-              <div className="h-[86px] relative" style={{ background: groupGradient(g.color) }}>
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[56px] opacity-90 group-hover:scale-110 group-hover:-rotate-6 transition duration-300" aria-hidden>
-                  {g.emoji}
+              <div className="h-[92px] relative overflow-hidden" style={{ background: groupGradient(g.color), color: c.fg }}>
+                <Icon size={96} strokeWidth={1.4} className="absolute -right-3 -bottom-5 opacity-25 group-hover:opacity-35 group-hover:-rotate-6 transition duration-300" aria-hidden />
+                <span className="absolute left-4 bottom-3 w-10 h-10 rounded-xl bg-white/20 backdrop-blur grid place-items-center" aria-hidden>
+                  <Icon size={21} strokeWidth={2.1} />
                 </span>
-                {!g.emoji && <span className="absolute left-5 bottom-3 font-display text-4xl font-bold" style={{ color: c.fg }}>{g.name[0]?.toUpperCase()}</span>}
               </div>
               <div className="p-4">
                 <div className="flex items-center gap-2">
@@ -119,7 +119,7 @@ function CreateGroup({ open, onClose, onCreated }: { open: boolean; onClose: () 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState("cobalt");
-  const [emoji, setEmoji] = useState("💻");
+  const [icon, setIcon] = useState("code");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -130,7 +130,7 @@ function CreateGroup({ open, onClose, onCreated }: { open: boolean; onClose: () 
     setError(null);
     const { data, error } = await sb()
       .from("groups")
-      .insert({ name: name.trim(), description: description.trim(), color, emoji, created_by: session.user.id })
+      .insert({ name: name.trim(), description: description.trim(), color, icon, created_by: session.user.id })
       .select("id")
       .single();
     setBusy(false);
@@ -142,19 +142,30 @@ function CreateGroup({ open, onClose, onCreated }: { open: boolean; onClose: () 
   return (
     <Modal open={open} onClose={onClose} title="Nouveau groupe">
       <form onSubmit={create} className="px-5 pb-5">
-        <div className="h-24 rounded-2xl relative overflow-hidden" style={{ background: groupGradient(color) }}>
-          <span className="absolute right-5 top-1/2 -translate-y-1/2 text-6xl" aria-hidden>{emoji}</span>
-          <span className="absolute left-5 bottom-3 font-display text-xl font-bold truncate max-w-[60%]" style={{ color: groupColor(color).fg }}>{name || "Nom du groupe"}</span>
+        <div className="h-24 rounded-2xl relative overflow-hidden" style={{ background: groupGradient(color), color: groupColor(color).fg }}>
+          {(() => {
+            const Icon = groupIcon(icon);
+            return <Icon size={92} strokeWidth={1.4} className="absolute -right-2 -bottom-4 opacity-30" aria-hidden />;
+          })()}
+          <span className="absolute left-5 bottom-3 font-display text-xl font-bold truncate max-w-[70%]">{name || "Nom du groupe"}</span>
         </div>
         <div className="flex flex-col gap-3.5 mt-4">
           <input className="field" placeholder="Nom du groupe" value={name} onChange={(e) => setName(e.target.value)} required minLength={2} maxLength={60} autoFocus />
           <textarea className="field resize-none" rows={2} placeholder="De quoi parle ce groupe ?" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} />
           <div>
             <p className="text-sm font-semibold mb-2">Icône</p>
-            <div className="flex flex-wrap gap-1.5">
-              {EMOJIS.map((em) => (
-                <button type="button" key={em} onClick={() => setEmoji(em)} className={cx("w-10 h-10 rounded-xl text-xl grid place-items-center border transition", emoji === em ? "border-cobalt bg-cobalt-soft" : "border-line hover:bg-surface-2")} aria-label={`Icône ${em}`} aria-pressed={emoji === em}>
-                  {em}
+            <div className="grid grid-cols-10 gap-1.5">
+              {Object.entries(GROUP_ICONS).map(([k, v]) => (
+                <button
+                  type="button"
+                  key={k}
+                  onClick={() => setIcon(k)}
+                  title={v.label}
+                  className={cx("aspect-square rounded-xl grid place-items-center border transition", icon === k ? "border-cobalt bg-cobalt-soft text-cobalt" : "border-line text-ink-2 hover:bg-surface-2")}
+                  aria-label={v.label}
+                  aria-pressed={icon === k}
+                >
+                  <v.icon size={18} />
                 </button>
               ))}
             </div>

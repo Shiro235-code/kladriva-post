@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Home, Compass, Users, MessageCircle, Bell, Trophy, Bookmark, User, LogOut, Search, Plus, Moon, Sun, PenLine } from "lucide-react";
+import { Home, Compass, Users, MessageCircle, Bell, Trophy, Bookmark, User, LogOut, Search, Plus, Moon, Sun, PenLine, Flame, Sprout, Medal } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 import { useActivity, useTheme } from "./Providers";
 import { Avatar, Logo } from "./ui";
@@ -14,7 +14,7 @@ import { sb } from "@/lib/supabase";
 import type { PostKind, Profile, Stats } from "@/lib/types";
 import { cx, displayName } from "@/lib/utils";
 
-export function AppShell({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
+export function AppShell({ children, wide = false, full = false }: { children: React.ReactNode; wide?: boolean; full?: boolean }) {
   const { profile, session, signOut } = useAuth();
   const { unreadNotifs, unreadMessages } = useActivity();
   const { theme, toggle } = useTheme();
@@ -81,9 +81,9 @@ export function AppShell({ children, wide = false }: { children: React.ReactNode
         </div>
       </header>
 
-      <div className="mx-auto flex gap-6 xl:gap-8 px-3 sm:px-4 lg:px-6 max-w-[1280px]">
+      <div className="flex gap-6 xl:gap-8 2xl:gap-10 px-3 sm:px-4 lg:px-6 2xl:px-10 w-full">
         {/* Barre latérale */}
-        <aside className="hidden lg:flex flex-col w-[236px] shrink-0 sticky top-0 h-screen py-5">
+        <aside className="hidden lg:flex flex-col w-[236px] xl:w-[256px] 2xl:w-[280px] shrink-0 sticky top-0 h-screen py-5">
           <Link href="/feed" className="px-3 mb-7 mt-1" aria-label="Accueil"><Logo /></Link>
           <nav className="flex flex-col gap-0.5" aria-label="Navigation principale">
             {nav.map(({ href, label, icon: Icon, badge }) => {
@@ -149,13 +149,13 @@ export function AppShell({ children, wide = false }: { children: React.ReactNode
           </div>
         </aside>
 
-        <div className="flex-1 min-w-0 flex gap-6 xl:gap-8">
+        <div className="flex-1 min-w-0 flex gap-6 xl:gap-8 2xl:gap-10">
           <main className="flex-1 min-w-0 pt-4 lg:pt-5 pb-28 lg:pb-12">
             {/* Barre de recherche (bureau) */}
-            <div className={cx("hidden lg:flex justify-end mb-4", wide && "!hidden")}>
+            <div className={cx("hidden lg:flex mb-5", !full && "max-w-[680px] 2xl:max-w-[780px] mx-auto", wide && "!hidden")}>
               <button
                 onClick={() => setPalette(true)}
-                className="flex items-center gap-2.5 bg-surface border border-line rounded-full pl-4 pr-2 h-10 w-[300px] text-muted hover:border-line-strong transition"
+                className="flex items-center gap-2.5 bg-surface border border-line rounded-full pl-4 pr-2 h-11 w-full text-muted hover:border-line-strong transition"
               >
                 <Search size={17} />
                 <span className="flex-1 text-left text-sm">Rechercher</span>
@@ -241,7 +241,7 @@ function RightRail() {
   }, [session]);
 
   return (
-    <aside className="hidden xl:flex flex-col gap-6 w-[300px] shrink-0 py-5 sticky top-0 h-screen overflow-y-auto no-scrollbar">
+    <aside className="hidden xl:flex flex-col gap-6 w-[300px] 2xl:w-[360px] shrink-0 py-5 sticky top-0 h-screen overflow-y-auto no-scrollbar">
       {session && stats && <Momentum stats={stats} name={displayName(profile).split(" ")[0]} />}
 
       <section>
@@ -261,7 +261,7 @@ function RightRail() {
                     <span className="block text-sm font-semibold truncate">{displayName(p)}</span>
                     <span className="block text-xs text-muted">{score} points</span>
                   </span>
-                  {i === 0 && <span aria-hidden>🥇</span>}
+                  {i === 0 && <Medal size={18} className="text-[#d4a106]" aria-hidden />}
                 </Link>
               </li>
             ))}
@@ -306,7 +306,7 @@ function Momentum({ stats, name }: { stats: Stats; name: string }) {
           <p className="font-display text-[44px] font-bold leading-none tabular-nums">{s}</p>
           <p className="font-semibold mt-1">{s > 1 ? "jours de suite" : "jour de série"}</p>
         </div>
-        <span className="text-4xl" aria-hidden>{s > 0 ? "🔥" : "🌱"}</span>
+        <span className="w-12 h-12 rounded-2xl bg-[#14182b] text-sun grid place-items-center" aria-hidden>{s > 0 ? <Flame size={24} fill="currentColor" /> : <Sprout size={24} />}</span>
       </div>
       <div className="h-2 bg-[#14182b]/15 rounded-full mt-4 overflow-hidden">
         <div className="h-full bg-[#14182b] rounded-full transition-all duration-700" style={{ width: `${pct}%` }} />

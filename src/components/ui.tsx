@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import { X } from "lucide-react";
-import { cx, displayName, kindOf, tokenize } from "@/lib/utils";
+import { X, type LucideIcon } from "lucide-react";
+import { cx, displayName, groupColor, groupGradient, groupIcon, kindOf, tokenize } from "@/lib/utils";
 import type { PostKind } from "@/lib/types";
 
 const TONES = ["#2f4bff", "#ff5470", "#0fa978", "#7b5cff", "#ff8a3d", "#1f6f8b", "#c2410c"];
@@ -70,10 +70,14 @@ export function Spinner({ className = "" }: { className?: string }) {
   return <span className={cx("inline-block w-5 h-5 rounded-full border-2 border-line border-t-cobalt animate-spin", className)} aria-label="Chargement" />;
 }
 
-export function Empty({ emoji, title, text, children }: { emoji?: string; title: string; text?: string; children?: React.ReactNode }) {
+export function Empty({ icon: Icon, title, text, children }: { icon?: LucideIcon; title: string; text?: string; children?: React.ReactNode }) {
   return (
     <div className="panel px-6 py-12 text-center">
-      {emoji && <p className="text-4xl mb-3">{emoji}</p>}
+      {Icon && (
+        <span className="w-14 h-14 rounded-2xl bg-cobalt-soft text-cobalt grid place-items-center mx-auto mb-4">
+          <Icon size={26} strokeWidth={1.9} />
+        </span>
+      )}
       <p className="font-display text-2xl font-semibold">{title}</p>
       {text && <p className="text-muted mt-1.5 max-w-sm mx-auto">{text}</p>}
       {children && <div className="mt-5 flex justify-center">{children}</div>}
@@ -101,10 +105,21 @@ export function PostSkeleton() {
 export function KindBadge({ kind, className }: { kind: PostKind; className?: string }) {
   if (kind === "update") return null;
   const k = kindOf(kind);
+  const Icon = k.icon;
   return (
-    <span className={cx("inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-0.5 rounded-lg", className)} style={{ background: k.bg, color: k.fg }}>
-      <span aria-hidden>{k.emoji}</span>
+    <span className={cx("inline-flex items-center gap-1.5 text-[12px] font-semibold px-2 py-1 rounded-lg leading-none", className)} style={{ background: k.bg, color: k.fg }}>
+      <Icon size={13} strokeWidth={2.4} aria-hidden />
       {k.short}
+    </span>
+  );
+}
+
+/** Pastille de groupe : dégradé de la couleur du groupe + son icône. */
+export function GroupMark({ color, icon, size = 40, className }: { color?: string; icon?: string; size?: number; className?: string }) {
+  const Icon = groupIcon(icon);
+  return (
+    <span className={cx("grid place-items-center shrink-0", className)} style={{ width: size, height: size, borderRadius: size * 0.3, background: groupGradient(color), color: groupColor(color).fg }}>
+      <Icon size={size * 0.5} strokeWidth={2} aria-hidden />
     </span>
   );
 }

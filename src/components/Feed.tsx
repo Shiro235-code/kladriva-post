@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, WifiOff, Sprout, CircleCheck, type LucideIcon } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { POST_SELECT, type Post, type PostKind } from "@/lib/types";
 import { KINDS, cx } from "@/lib/utils";
@@ -33,7 +33,7 @@ export function Feed({
   showComposer?: boolean;
   canPost?: boolean;
   mediaOnly?: boolean;
-  empty?: { emoji?: string; title: string; text?: string; action?: React.ReactNode };
+  empty?: { icon?: LucideIcon; title: string; text?: string; action?: React.ReactNode };
 }) {
   const { session, loading: authLoading } = useAuth();
   const uid = session?.user.id;
@@ -60,7 +60,7 @@ export function Feed({
       if (groupId) q = q.eq("group_id", groupId);
       if (authorId) q = q.eq("author_id", authorId);
       if (kind !== "all") q = q.eq("kind", kind);
-      if (mediaOnly) q = q.neq("images", "{}");
+      if (mediaOnly) q = q.or("images.neq.{},video_url.not.is.null");
       if (search) q = q.ilike("content", `%${search.replace(/[%_]/g, "")}%`);
       if (mode === "following" && uid) {
         const { data: f } = await sb().from("follows").select("following_id").eq("follower_id", uid);
@@ -148,7 +148,7 @@ export function Feed({
           <Chip on={kind === "all"} onClick={() => setKind("all")}>Tout</Chip>
           {KINDS.filter((k) => k.kind !== "update").map((k) => (
             <Chip key={k.kind} on={kind === k.kind} onClick={() => setKind(k.kind)}>
-              <span aria-hidden>{k.emoji}</span> {k.short}
+              <k.icon size={14} strokeWidth={2.3} aria-hidden /> {k.short}
             </Chip>
           ))}
         </div>
@@ -172,12 +172,12 @@ export function Feed({
           <PostSkeleton />
         </>
       ) : error ? (
-        <Empty emoji="📡" title="Connexion interrompue" text={error}>
+        <Empty icon={WifiOff} title="Connexion interrompue" text={error}>
           <button onClick={() => { setLoading(true); reload(); }} className="btn btn-primary">Réessayer</button>
         </Empty>
       ) : posts.length === 0 ? (
         <Empty
-          emoji={empty?.emoji || "🌱"}
+          icon={empty?.icon || Sprout}
           title={kind !== "all" ? "Rien dans cette catégorie" : empty?.title || "Le fil est encore vide"}
           text={kind !== "all" ? "Choisis un autre filtre ou sois le premier à publier dans celle-ci." : empty?.text || "Partage ta première avancée : c'est comme ça que tout commence."}
         >
@@ -189,7 +189,7 @@ export function Feed({
 
       <div ref={sentinel} />
       {loadingMore && <PostSkeleton />}
-      {!loading && !more && posts.length > 4 && <p className="text-center text-sm text-muted py-4">Tu es à jour 🎉</p>}
+      {!loading && !more && posts.length > 4 && <p className="flex items-center justify-center gap-2 text-sm text-muted py-4"><CircleCheck size={16} className="text-mint" /> Tu es à jour</p>}
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, PenSquare, Send, Search, CheckCheck } from "lucide-react";
+import { ArrowLeft, PenSquare, Send, Search, CheckCheck, MessagesSquare } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { useActivity, useToast } from "@/components/Providers";
@@ -99,7 +99,7 @@ function MessagesInner() {
   return (
     <AppShell wide>
       <div className="panel overflow-hidden h-[calc(100dvh-156px)] lg:h-[calc(100dvh-44px)] flex">
-        <div className={cx("w-full md:w-[340px] md:border-r border-line flex flex-col", active && "hidden md:flex")}>
+        <div className={cx("w-full md:w-[340px] 2xl:w-[400px] md:border-r border-line flex flex-col", active && "hidden md:flex")}>
           <div className="flex items-center justify-between px-5 pt-5 pb-3">
             <h1 className="font-display text-2xl font-bold">Messages</h1>
             <button onClick={() => setPicker(true)} className="w-10 h-10 rounded-full bg-cobalt text-white grid place-items-center" title="Nouveau message" aria-label="Nouveau message">
@@ -117,7 +117,7 @@ function MessagesInner() {
               <div className="flex justify-center py-10"><Spinner /></div>
             ) : convs.length === 0 ? (
               <div className="text-center px-6 py-12">
-                <p className="text-4xl">💬</p>
+                <span className="w-14 h-14 rounded-2xl bg-cobalt-soft text-cobalt grid place-items-center mx-auto"><MessagesSquare size={26} /></span>
                 <p className="font-display text-xl font-semibold mt-2">Aucune conversation</p>
                 <p className="text-sm text-muted mt-1">Écris à un apprenant pour échanger en privé.</p>
                 <button onClick={() => setPicker(true)} className="btn btn-primary mt-4">Nouveau message</button>
@@ -149,7 +149,7 @@ function MessagesInner() {
           ) : (
             <div className="flex-1 grid place-items-center text-center p-10">
               <div>
-                <div className="w-20 h-20 rounded-3xl bg-cobalt-soft grid place-items-center text-4xl mx-auto">💬</div>
+                <div className="w-20 h-20 rounded-3xl bg-cobalt-soft text-cobalt grid place-items-center mx-auto"><MessagesSquare size={36} strokeWidth={1.8} /></div>
                 <p className="font-display text-2xl font-bold mt-4">Tes messages privés</p>
                 <p className="text-muted mt-1 max-w-xs mx-auto">Choisis une conversation, ou écris à quelqu&apos;un de ta promo.</p>
                 <button onClick={() => setPicker(true)} className="btn btn-primary mt-5">Nouveau message</button>
@@ -296,7 +296,7 @@ function Thread({ convId, conv, uid, online, onActivity }: { convId: string; con
           <div className="m-auto text-center">
             {other && <Avatar profile={other} size={72} className="mx-auto" />}
             <p className="font-display text-xl font-bold mt-3">{displayName(other)}</p>
-            <p className="text-muted text-sm mt-1">Dis bonjour à {firstName(other)} 👋</p>
+            <p className="text-muted text-sm mt-1">Dis bonjour à {firstName(other)}.</p>
           </div>
         ) : (
           msgs.map((m, i) => {

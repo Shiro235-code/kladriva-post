@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MessageCircle, Bookmark, Share2, MoreHorizontal, Trash2, Link2, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Heart, MessageCircle, Bookmark, Share2, MoreHorizontal, Trash2, Link2, ChevronLeft, ChevronRight, X, ThumbsUp, Volume2, VolumeX } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import type { Post, ReactionType } from "@/lib/types";
-import { REACTIONS, cx, displayName, fullDate, groupGradient, plural, postImages, reactionOf, timeAgo } from "@/lib/utils";
+import { REACTIONS, cx, displayName, fullDate, plural, postImages, reactionOf, timeAgo } from "@/lib/utils";
 import { useAuth } from "./AuthProvider";
 import { useToast } from "./Providers";
-import { Avatar, KindBadge, Modal, RichText } from "./ui";
+import { Avatar, GroupMark, KindBadge, Modal, RichText } from "./ui";
 import { Comments } from "./Comments";
 
 const CLAMP = 420;
@@ -123,9 +123,7 @@ export function PostCard({ post, onDeleted, startOpen = false }: { post: Post; o
                 <>
                   <span className="text-muted" aria-hidden>▸</span>
                   <Link href={`/groups/${post.group.id}`} className="font-semibold hover:underline inline-flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-[5px] inline-grid place-items-center text-[10px]" style={{ background: groupGradient(post.group.color) }}>
-                      {post.group.emoji || ""}
-                    </span>
+                    <GroupMark color={post.group.color} icon={post.group.icon} size={18} />
                     {post.group.name}
                   </Link>
                 </>
@@ -165,11 +163,17 @@ export function PostCard({ post, onDeleted, startOpen = false }: { post: Post; o
         )}
       </div>
 
+      {post.video_url?.startsWith("https://") && (
+        <div className="mt-3 sm:mx-5 sm:rounded-2xl overflow-hidden bg-black">
+          <FeedVideo src={post.video_url} />
+        </div>
+      )}
+
       {images.length > 0 && (
         <div className="relative mt-3 sm:mx-5 sm:rounded-2xl overflow-hidden" onDoubleClick={loveFromImage}>
           <ImageGrid images={images} onOpen={setLightbox} />
           {burst > 0 && (
-            <span key={burst} className="burst absolute left-1/2 top-1/2 text-[88px] pointer-events-none drop-shadow-lg" aria-hidden>❤️</span>
+            <span key={burst} className="burst absolute left-1/2 top-1/2 pointer-events-none drop-shadow-lg text-white" aria-hidden><Heart size={96} fill="var(--coral)" strokeWidth={1.2} /></span>
           )}
         </div>
       )}
@@ -224,9 +228,13 @@ export function PostCard({ post, onDeleted, startOpen = false }: { post: Post; o
               style={mine ? { color: reactionOf(mine.type).color } : undefined}
               active={!!mine}
             >
-              <span key={popKey} className={cx("text-[18px] leading-none", popKey > 0 && "pop")} aria-hidden>
-                {mine ? reactionOf(mine.type).emoji : "👍"}
-              </span>
+              {mine ? (
+                <span key={popKey} className={cx("text-[18px] leading-none", popKey > 0 && "pop")} aria-hidden>
+                  {reactionOf(mine.type).emoji}
+                </span>
+              ) : (
+                <ThumbsUp size={18} aria-hidden />
+              )}
               <span className="hidden sm:inline">{mine ? reactionOf(mine.type).label : "J'aime"}</span>
             </ActionButton>
           </div>
@@ -263,6 +271,38 @@ export function PostCard({ post, onDeleted, startOpen = false }: { post: Post; o
 
       {lightbox !== null && <Lightbox images={images} index={lightbox} onClose={() => setLightbox(null)} />}
     </article>
+  );
+}
+
+/** Vidéo du fil : lecture automatique en muet quand elle est visible, comme sur les grands réseaux. */
+function FeedVideo({ src }: { src: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [muted, setMuted] = useState(true);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting && e.intersectionRatio >= 0.6 && !reduce) v.play().catch(() => {});
+        else v.pause();
+      },
+      { threshold: [0, 0.6, 1] },
+    );
+    io.observe(v);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <div className="relative group">
+      <video ref={ref} src={src} muted={muted} loop playsInline preload="metadata" controls className="w-full max-h-[640px] bg-black block" />
+      <button
+        onClick={() => setMuted((m) => !m)}
+        className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/60 text-white grid place-items-center opacity-90 hover:bg-black/80"
+        aria-label={muted ? "Activer le son" : "Couper le son"}
+      >
+        {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+      </button>
+    </div>
   );
 }
 

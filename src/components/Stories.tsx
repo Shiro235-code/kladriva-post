@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, ImagePlus, Plus, Trash2, X } from "lucide-react";
+import { Camera, ChevronLeft, ChevronRight, ImagePlus, Plus, Trash2, X } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import type { Story } from "@/lib/types";
 import { STORY_BGS, cx, displayName, firstName, timeAgo } from "@/lib/utils";
@@ -114,7 +114,7 @@ export function StoriesBar() {
         })}
         {session && others.length === 0 && (
           <button onClick={() => setCreating(true)} className="shrink-0 h-[66px] self-start flex items-center gap-3 px-4 rounded-2xl border border-dashed border-line-strong text-left text-sm text-muted hover:text-ink hover:border-cobalt transition">
-            <span className="text-2xl" aria-hidden>📸</span>
+            <span className="w-9 h-9 rounded-xl bg-cobalt-soft text-cobalt grid place-items-center shrink-0" aria-hidden><Camera size={18} /></span>
             <span>
               <b className="block text-ink">Partage ta journée</b>
               Une story reste visible 24 h.

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { Flag, Medal } from "lucide-react";
 import { useAuth } from "@/components/AuthProvider";
 import { Avatar, Empty, Spinner } from "@/components/ui";
 import { sb } from "@/lib/supabase";
@@ -38,11 +39,11 @@ export default function LeaderboardPage() {
   const rest = rows.slice(3);
   const order = [podium[1], podium[0], podium[2]];
   const heights = ["h-24", "h-32", "h-20"];
-  const medals = ["🥈", "🥇", "🥉"];
+  const medals = ["#a3acc2", "#e0a800", "#c07a43"];
 
   return (
     <AppShell>
-      <div className="max-w-[620px] mx-auto">
+      <div className="max-w-[680px] 2xl:max-w-[780px] mx-auto">
         <h1 className="font-display text-[34px] font-bold leading-tight">Classement</h1>
         <p className="text-muted mt-1">5 points par publication, 2 par commentaire, 1 par réaction reçue.</p>
 
@@ -61,7 +62,7 @@ export default function LeaderboardPage() {
           <div className="flex justify-center py-20"><Spinner /></div>
         ) : rows.length === 0 ? (
           <div className="mt-6">
-            <Empty emoji="🏁" title="La course n'a pas commencé" text="Publie ta première avancée de la période pour prendre la tête." />
+            <Empty icon={Flag} title="La course n'a pas commencé" text="Publie ta première avancée de la période pour prendre la tête." />
           </div>
         ) : (
           <>
@@ -71,7 +72,7 @@ export default function LeaderboardPage() {
                   <Link key={r.user_id} href={`/u/${r.p.username}`} className="text-center group">
                     <div className="relative inline-block">
                       <Avatar profile={r.p} size={i === 1 ? 84 : 66} className={cx("ring-4", i === 1 ? "ring-sun" : "ring-surface")} />
-                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-2xl" aria-hidden>{medals[i]}</span>
+                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-surface border border-line grid place-items-center" aria-hidden><Medal size={18} style={{ color: medals[i] }} /></span>
                     </div>
                     <p className="font-semibold mt-2 truncate group-hover:underline">{displayName(r.p)}</p>
                     <p className="text-sm text-muted tabular-nums">{r.score} pts</p>

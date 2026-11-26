@@ -1,4 +1,9 @@
 import type { PostKind, ReactionType, Stats } from "./types";
+import {
+  PenLine, Trophy, LifeBuoy, BookOpen, Rocket, Sprout, CalendarCheck, Flame, Handshake, MessagesSquare, Star, Globe,
+  CodeXml, Palette, Bot, ChartColumn, Smartphone, Brain, Clapperboard, Settings, Lock, Camera, Music, Briefcase,
+  Megaphone, GraduationCap, Database, Users, Lightbulb, PenTool, type LucideIcon,
+} from "lucide-react";
 
 export function timeAgo(iso: string): string {
   const s = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
@@ -46,12 +51,12 @@ export const REACTIONS: { type: ReactionType; emoji: string; label: string; colo
 export const reactionOf = (t: ReactionType) => REACTIONS.find((r) => r.type === t) || REACTIONS[0];
 
 /* ---------- Types de publication ---------- */
-export const KINDS: { kind: PostKind; emoji: string; label: string; short: string; fg: string; bg: string }[] = [
-  { kind: "update", emoji: "✍️", label: "Avancée", short: "Avancée", fg: "var(--ink-2)", bg: "var(--surface-2)" },
-  { kind: "win", emoji: "🏆", label: "Victoire", short: "Victoire", fg: "#8a5a00", bg: "var(--sun-soft)" },
-  { kind: "help", emoji: "🆘", label: "Je bloque", short: "Besoin d'aide", fg: "var(--coral)", bg: "var(--coral-soft)" },
-  { kind: "resource", emoji: "📚", label: "Ressource", short: "Ressource", fg: "var(--mint)", bg: "var(--mint-soft)" },
-  { kind: "project", emoji: "🚀", label: "Projet terminé", short: "Projet", fg: "var(--cobalt)", bg: "var(--cobalt-soft)" },
+export const KINDS: { kind: PostKind; icon: LucideIcon; label: string; short: string; fg: string; bg: string }[] = [
+  { kind: "update", icon: PenLine, label: "Avancée", short: "Avancée", fg: "var(--ink-2)", bg: "var(--surface-2)" },
+  { kind: "win", icon: Trophy, label: "Victoire", short: "Victoire", fg: "var(--sun-ink)", bg: "var(--sun-soft)" },
+  { kind: "help", icon: LifeBuoy, label: "Je bloque", short: "Besoin d'aide", fg: "var(--coral)", bg: "var(--coral-soft)" },
+  { kind: "resource", icon: BookOpen, label: "Ressource", short: "Ressource", fg: "var(--mint)", bg: "var(--mint-soft)" },
+  { kind: "project", icon: Rocket, label: "Projet terminé", short: "Projet", fg: "var(--cobalt)", bg: "var(--cobalt-soft)" },
 ];
 export const kindOf = (k: PostKind) => KINDS.find((x) => x.kind === k) || KINDS[0];
 
@@ -78,6 +83,31 @@ export const groupGradient = (c?: string) => {
   return `linear-gradient(135deg, ${g.from}, ${g.to})`;
 };
 
+/* ---------- Icônes de groupe ---------- */
+export const GROUP_ICONS: Record<string, { icon: LucideIcon; label: string }> = {
+  users: { icon: Users, label: "Communauté" },
+  code: { icon: CodeXml, label: "Code" },
+  design: { icon: Palette, label: "Design" },
+  ai: { icon: Bot, label: "IA" },
+  data: { icon: ChartColumn, label: "Data" },
+  mobile: { icon: Smartphone, label: "Mobile" },
+  brain: { icon: Brain, label: "Réflexion" },
+  rocket: { icon: Rocket, label: "Projet" },
+  book: { icon: BookOpen, label: "Cours" },
+  video: { icon: Clapperboard, label: "Vidéo" },
+  database: { icon: Database, label: "Base de données" },
+  ops: { icon: Settings, label: "DevOps" },
+  security: { icon: Lock, label: "Sécurité" },
+  photo: { icon: Camera, label: "Photo" },
+  music: { icon: Music, label: "Audio" },
+  business: { icon: Briefcase, label: "Business" },
+  marketing: { icon: Megaphone, label: "Marketing" },
+  school: { icon: GraduationCap, label: "Formation" },
+  idea: { icon: Lightbulb, label: "Idées" },
+  writing: { icon: PenTool, label: "Rédaction" },
+};
+export const groupIcon = (k?: string) => (GROUP_ICONS[k || "users"] || GROUP_ICONS.users).icon;
+
 /* ---------- Stories ---------- */
 export const STORY_BGS: Record<string, string> = {
   ember: "linear-gradient(160deg, #ff8a3d, #ff5470)",
@@ -88,18 +118,18 @@ export const STORY_BGS: Record<string, string> = {
 };
 
 /* ---------- Badges ---------- */
-export type Badge = { id: string; emoji: string; name: string; hint: string; earned: boolean };
+export type Badge = { id: string; icon: LucideIcon; name: string; hint: string; earned: boolean };
 export function badgesFor(s: Stats | null): Badge[] {
   const v = s || { posts: 0, reactions: 0, comments: 0, followers: 0, following: 0, groups: 0, helped: 0, projects: 0, streak: 0 };
   return [
-    { id: "first", emoji: "🌱", name: "Premier pas", hint: "Publier une première avancée", earned: v.posts >= 1 },
-    { id: "regular", emoji: "📅", name: "Régulier", hint: "3 jours de suite", earned: v.streak >= 3 },
-    { id: "fire", emoji: "🔥", name: "En feu", hint: "7 jours de suite", earned: v.streak >= 7 },
-    { id: "builder", emoji: "🚀", name: "Bâtisseur", hint: "Terminer un projet", earned: v.projects >= 1 },
-    { id: "helper", emoji: "🤝", name: "Entraide", hint: "Aider 3 apprenants bloqués", earned: v.helped >= 3 },
-    { id: "talker", emoji: "💬", name: "Pilier", hint: "20 commentaires", earned: v.comments >= 20 },
-    { id: "popular", emoji: "⭐", name: "Inspirant", hint: "25 réactions reçues", earned: v.reactions >= 25 },
-    { id: "network", emoji: "🌍", name: "Réseau", hint: "10 abonnés", earned: v.followers >= 10 },
+    { id: "first", icon: Sprout, name: "Premier pas", hint: "Publier une première avancée", earned: v.posts >= 1 },
+    { id: "regular", icon: CalendarCheck, name: "Régulier", hint: "3 jours de suite", earned: v.streak >= 3 },
+    { id: "fire", icon: Flame, name: "En feu", hint: "7 jours de suite", earned: v.streak >= 7 },
+    { id: "builder", icon: Rocket, name: "Bâtisseur", hint: "Terminer un projet", earned: v.projects >= 1 },
+    { id: "helper", icon: Handshake, name: "Entraide", hint: "Aider 3 apprenants bloqués", earned: v.helped >= 3 },
+    { id: "talker", icon: MessagesSquare, name: "Pilier", hint: "20 commentaires", earned: v.comments >= 20 },
+    { id: "popular", icon: Star, name: "Inspirant", hint: "25 réactions reçues", earned: v.reactions >= 25 },
+    { id: "network", icon: Globe, name: "Réseau", hint: "10 abonnés", earned: v.followers >= 10 },
   ];
 }
 

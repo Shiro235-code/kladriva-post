@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { use, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, SearchX, MessagesSquare } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/Providers";
@@ -12,9 +12,9 @@ import { FollowButton } from "@/components/FollowButton";
 import { Avatar, Empty, Spinner } from "@/components/ui";
 import { sb } from "@/lib/supabase";
 import type { Profile } from "@/lib/types";
-import { cx, displayName, groupColor, groupGradient, plural } from "@/lib/utils";
+import { cx, displayName, groupColor, groupGradient, groupIcon, plural } from "@/lib/utils";
 
-type G = { id: string; name: string; description: string; color: string; emoji: string; created_by: string; created_at: string };
+type G = { id: string; name: string; description: string; color: string; icon: string; created_by: string; created_at: string };
 
 export default function GroupPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -64,8 +64,8 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
   if (!group)
     return (
       <AppShell>
-        <div className="max-w-[620px] mx-auto">
-          <Empty emoji="🧭" title="Groupe introuvable" text="Il a peut-être été supprimé par son créateur.">
+        <div className="max-w-[680px] 2xl:max-w-[780px] mx-auto">
+          <Empty icon={SearchX} title="Groupe introuvable" text="Il a peut-être été supprimé par son créateur.">
             <Link href="/groups" className="btn btn-primary">Voir les groupes</Link>
           </Empty>
         </div>
@@ -73,15 +73,18 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
     );
 
   const c = groupColor(group.color);
+  const Icon = groupIcon(group.icon);
 
   return (
     <AppShell>
-      <div className="max-w-[620px] mx-auto">
+      <div className="max-w-[680px] 2xl:max-w-[780px] mx-auto">
         <Link href="/groups" className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink mb-4"><ArrowLeft size={16} /> Groupes</Link>
         <section className="panel overflow-hidden">
-          <div className="h-36 relative" style={{ background: groupGradient(group.color) }}>
-            <span className="absolute right-6 top-1/2 -translate-y-1/2 text-[92px] leading-none" aria-hidden>{group.emoji}</span>
-            {!group.emoji && <span className="absolute left-6 bottom-4 font-display text-6xl font-bold" style={{ color: c.fg }}>{group.name[0]?.toUpperCase()}</span>}
+          <div className="h-40 relative overflow-hidden" style={{ background: groupGradient(group.color), color: c.fg }}>
+            <Icon size={180} strokeWidth={1.2} className="absolute -right-6 -bottom-10 opacity-25" aria-hidden />
+            <span className="absolute left-6 bottom-5 w-14 h-14 rounded-2xl bg-white/20 backdrop-blur grid place-items-center" aria-hidden>
+              <Icon size={28} strokeWidth={2} />
+            </span>
           </div>
           <div className="p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
@@ -132,7 +135,7 @@ export default function GroupPage({ params }: { params: Promise<{ id: string }> 
                 <button onClick={toggle} disabled={busy} className="btn btn-primary !py-2 shrink-0">Rejoindre</button>
               </div>
             )}
-            <Feed groupId={id} canPost={isMember} empty={{ emoji: group.emoji || "💬", title: "Aucune publication dans ce groupe", text: isMember ? "Lance la première discussion du groupe." : "Rejoins le groupe et lance la première discussion." }} />
+            <Feed groupId={id} canPost={isMember} empty={{ icon: MessagesSquare, title: "Aucune publication dans ce groupe", text: isMember ? "Lance la première discussion du groupe." : "Rejoins le groupe et lance la première discussion." }} />
           </>
         ) : (
           <ul className="panel divide-y divide-line">

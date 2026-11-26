@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { MessageCircle, Reply, AtSign, UserPlus, Users, Heart, Bell } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { useActivity } from "@/components/Providers";
@@ -12,26 +13,26 @@ import { cx, displayName, reactionOf, timeAgo } from "@/lib/utils";
 
 const SELECT = "*, actor:profiles!notifications_actor_id_fkey(*), post:posts(id,content), group:groups(id,name)";
 
-function describe(n: Notification): { icon: string; text: React.ReactNode; href: string } {
+function describe(n: Notification): { icon: React.ReactNode; text: React.ReactNode; href: string } {
   const who = <b className="font-semibold">{displayName(n.actor)}</b>;
   const post = n.post ? `/p/${n.post.id}` : "/feed";
   switch (n.type) {
     case "reaction": {
       const r = reactionOf(n.data?.reaction || "like");
-      return { icon: r.emoji, text: <>{who} a réagi à ta publication</>, href: post };
+      return { icon: <span className="text-[13px] leading-none">{r.emoji}</span>, text: <>{who} a réagi à ta publication</>, href: post };
     }
     case "comment":
-      return { icon: "💬", text: <>{who} a commenté ta publication</>, href: post };
+      return { icon: <MessageCircle size={13} className="text-cobalt" />, text: <>{who} a commenté ta publication</>, href: post };
     case "reply":
-      return { icon: "↩️", text: <>{who} a répondu à ton commentaire</>, href: post };
+      return { icon: <Reply size={13} className="text-cobalt" />, text: <>{who} a répondu à ton commentaire</>, href: post };
     case "mention":
-      return { icon: "📣", text: <>{who} t&apos;a mentionné</>, href: post };
+      return { icon: <AtSign size={13} className="text-cobalt" />, text: <>{who} t&apos;a mentionné</>, href: post };
     case "follow":
-      return { icon: "👋", text: <>{who} s&apos;est abonné à toi</>, href: n.actor ? `/u/${n.actor.username}` : "/feed" };
+      return { icon: <UserPlus size={13} className="text-mint" />, text: <>{who} s&apos;est abonné à toi</>, href: n.actor ? `/u/${n.actor.username}` : "/feed" };
     case "group_join":
-      return { icon: "🫂", text: <>{who} a rejoint <b className="font-semibold">{n.group?.name || "ton groupe"}</b></>, href: n.group ? `/groups/${n.group.id}` : "/groups" };
+      return { icon: <Users size={13} className="text-mint" />, text: <>{who} a rejoint <b className="font-semibold">{n.group?.name || "ton groupe"}</b></>, href: n.group ? `/groups/${n.group.id}` : "/groups" };
     case "comment_like":
-      return { icon: "❤️", text: <>{who} a aimé ton commentaire</>, href: post };
+      return { icon: <Heart size={12} className="text-coral" fill="currentColor" />, text: <>{who} a aimé ton commentaire</>, href: post };
   }
 }
 
@@ -99,7 +100,7 @@ export default function NotificationsPage() {
                 <button onClick={() => open(n, d.href)} className={cx("w-full flex items-start gap-3.5 px-4 py-3.5 text-left hover:bg-surface-2 transition", !n.read && "bg-cobalt-soft/50")}>
                   <span className="relative shrink-0">
                     <Avatar profile={n.actor} size={46} />
-                    <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-surface border border-line grid place-items-center text-[13px]">{d.icon}</span>
+                    <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-surface border border-line grid place-items-center">{d.icon}</span>
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[15px] leading-snug">{d.text}</span>
@@ -117,7 +118,7 @@ export default function NotificationsPage() {
 
   return (
     <AppShell>
-      <div className="max-w-[620px] mx-auto">
+      <div className="max-w-[680px] 2xl:max-w-[780px] mx-auto">
         <div className="flex items-end justify-between gap-4 mb-5">
           <h1 className="font-display text-[34px] font-bold leading-tight">Notifications</h1>
           {unread > 0 && <button onClick={markAll} className="btn btn-soft !py-2 text-[13px]">Tout marquer comme lu</button>}
@@ -136,7 +137,7 @@ export default function NotificationsPage() {
         {loading ? (
           <div className="flex justify-center py-16"><Spinner /></div>
         ) : shown.length === 0 ? (
-          <Empty emoji="🔔" title={filter === "unread" ? "Tout est lu" : "Pas encore de notification"} text="Publie, commente et suis d'autres apprenants : leurs réactions apparaîtront ici." />
+          <Empty icon={Bell} title={filter === "unread" ? "Tout est lu" : "Pas encore de notification"} text="Publie, commente et suis d'autres apprenants : leurs réactions apparaîtront ici." />
         ) : (
           <>
             <Group title="Aujourd'hui" list={today} />

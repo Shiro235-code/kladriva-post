@@ -24,6 +24,7 @@
   --cobalt-soft: #e8ecff;
   --sun: #ffc531;
   --sun-soft: #fff4d1;
+  --sun-ink: #8a5a00;
   --coral: #ff5470;
   --coral-soft: #ffe7eb;
   --mint: #0fa978;
@@ -48,6 +49,7 @@
   --cobalt-soft: #1f2852;
   --sun: #ffcf4d;
   --sun-soft: #3a3118;
+  --sun-ink: #ffcf4d;
   --coral: #ff6b84;
   --coral-soft: #3d1d27;
   --mint: #34d39e;
@@ -104,12 +106,16 @@ body {
   color: #fff;
 }
 
+@layer base {
 :focus-visible {
   outline: 2.5px solid var(--cobalt);
   outline-offset: 2px;
   border-radius: 8px;
 }
 
+}
+
+@layer components {
 /* ---------- Surfaces ---------- */
 .panel {
   background: var(--surface);
@@ -200,6 +206,8 @@ body {
   background: var(--surface);
 }
 
+}
+
 /* ---------- Mouvement (en réponse aux actions) ---------- */
 @keyframes pop {
   0% { transform: scale(1); }
@@ -274,7 +282,7 @@ body {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 
-/* Anneau de story : dégradé cobalt → tournesol */
+/* Anneau de story : dégradé cobalt vers tournesol */
 .story-ring {
   background: conic-gradient(from 210deg, var(--cobalt), #7b5cff, var(--sun), var(--cobalt));
   padding: 2.5px;

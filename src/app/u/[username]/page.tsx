@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, MessageCircle, CalendarDays } from "lucide-react";
+import { Camera, MessageCircle, CalendarDays, Flame, Sprout, UserX, PenLine } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { useToast } from "@/components/Providers";
@@ -31,7 +31,7 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
     setP(data as Profile);
     setLoading(false);
     if (!data) return;
-    const since = new Date(Date.now() - 7 * 18 * 86400000).toISOString();
+    const since = new Date(Date.now() - 7 * 12 * 86400000).toISOString();
     const [{ data: st }, { data: ps }] = await Promise.all([
       sb().rpc("profile_stats", { uid: data.id }),
       sb().from("posts").select("created_at").eq("author_id", data.id).gte("created_at", since),
@@ -61,8 +61,8 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
   if (!p)
     return (
       <AppShell>
-        <div className="max-w-[620px] mx-auto">
-          <Empty emoji="🧭" title="Profil introuvable" text="Ce nom d'utilisateur n'existe pas ou a changé.">
+        <div className="max-w-[780px] mx-auto">
+          <Empty icon={UserX} title="Profil introuvable" text="Ce nom d'utilisateur n'existe pas ou a changé.">
             <Link href="/explorer" className="btn btn-primary">Chercher un apprenant</Link>
           </Empty>
         </div>
@@ -74,8 +74,9 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
   const earned = badges.filter((b) => b.earned).length;
 
   return (
-    <AppShell>
-      <div className="max-w-[620px] mx-auto">
+    <AppShell wide>
+      <div className="xl:grid xl:grid-cols-[380px_minmax(0,1fr)] 2xl:grid-cols-[430px_minmax(0,1fr)] gap-8 2xl:gap-10 items-start max-w-[1400px] mx-auto">
+        <div className="xl:sticky xl:top-5 flex flex-col gap-3">
         <section className="panel overflow-hidden">
           <div className="h-36 sm:h-44 relative" style={{ background: "linear-gradient(120deg, #2f4bff 0%, #5b4dff 50%, #7b5cff 100%)" }}>
             <svg className="absolute inset-0 w-full h-full opacity-25" aria-hidden>
@@ -123,20 +124,20 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
         </section>
 
         {stats && (
-          <section className="grid sm:grid-cols-[180px_1fr] gap-3 mt-3">
+          <section className="grid grid-cols-[150px_1fr] gap-3">
             <div className="rounded-[18px] p-5 text-[#14182b]" style={{ background: "linear-gradient(150deg, #ffd85c, #ffc531 55%, #ffab3d)" }}>
-              <p className="text-3xl" aria-hidden>{stats.streak > 0 ? "🔥" : "🌱"}</p>
-              <p className="font-display text-[40px] font-bold leading-none mt-1 tabular-nums">{stats.streak}</p>
+              <span className="w-11 h-11 rounded-2xl bg-[#14182b] text-sun grid place-items-center" aria-hidden>{stats.streak > 0 ? <Flame size={22} fill="currentColor" /> : <Sprout size={22} />}</span>
+              <p className="font-display text-[40px] font-bold leading-none mt-3 tabular-nums">{stats.streak}</p>
               <p className="font-semibold text-sm mt-1">{stats.streak > 1 ? "jours de suite" : "jour de série"}</p>
             </div>
             <div className="panel p-4">
-              <p className="font-semibold text-sm mb-2.5">Activité des 18 dernières semaines</p>
+              <p className="font-semibold text-sm mb-2.5">Activité récente</p>
               <Heatmap days={days} />
             </div>
           </section>
         )}
 
-        <section className="panel p-5 mt-3">
+        <section className="panel p-5">
           <div className="flex items-baseline justify-between">
             <h2 className="font-display text-lg font-semibold">Badges</h2>
             <span className="text-sm text-muted">{earned} sur {badges.length}</span>
@@ -144,15 +145,19 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
           <ul className="grid grid-cols-4 gap-2 mt-3">
             {badges.map((b) => (
               <li key={b.id} title={`${b.name} : ${b.hint}`} className={cx("rounded-2xl p-2.5 text-center border", b.earned ? "border-transparent bg-sun-soft" : "border-dashed border-line-strong")}>
-                <span className={cx("text-[28px] block", !b.earned && "grayscale opacity-35")} aria-hidden>{b.emoji}</span>
-                <span className={cx("block text-[12px] font-semibold mt-1 leading-tight", !b.earned && "text-muted")}>{b.name}</span>
+                <span className={cx("w-10 h-10 rounded-xl grid place-items-center mx-auto", b.earned ? "bg-[#14182b] text-sun" : "bg-surface-2 text-muted")} aria-hidden>
+                  <b.icon size={20} strokeWidth={2} />
+                </span>
+                <span className={cx("block text-[12px] font-semibold mt-1.5 leading-tight", !b.earned && "text-muted")}>{b.name}</span>
                 {!b.earned && <span className="block text-[10.5px] text-muted leading-tight mt-0.5">{b.hint}</span>}
               </li>
             ))}
           </ul>
         </section>
 
-        <div className="flex gap-6 border-b border-line mt-7 mb-4" role="tablist">
+        </div>
+        <div className="min-w-0 max-w-[780px] w-full mx-auto xl:mx-0">
+        <div className="flex gap-6 border-b border-line mt-7 xl:mt-0 mb-4" role="tablist">
           {(
             [
               ["posts", "Publications"],
@@ -172,8 +177,9 @@ export default function ProfilePage({ params }: { params: Promise<{ username: st
           mediaOnly={tab === "media"}
           showComposer={me && tab === "posts"}
           kindFilter={tab === "posts"}
-          empty={{ emoji: me ? "✍️" : "🌱", title: me ? "Partage ta première avancée" : "Aucune publication pour l'instant", text: me ? "Même un petit pas compte. Raconte ce que tu as appris aujourd'hui." : undefined }}
+          empty={{ icon: me ? PenLine : Sprout, title: me ? "Partage ta première avancée" : "Aucune publication pour l'instant", text: me ? "Même un petit pas compte. Raconte ce que tu as appris aujourd'hui." : undefined }}
         />
+        </div>
       </div>
       {editing && (
         <EditProfile
@@ -202,7 +208,7 @@ function Stat({ n, label }: { n: number; label: string }) {
 }
 
 function Heatmap({ days }: { days: Record<string, number> }) {
-  const weeks = 18;
+  const weeks = 12;
   const today = new Date();
   // Colonnes = semaines, du lundi au dimanche
   const first = new Date(today);
@@ -227,7 +233,7 @@ function Heatmap({ days }: { days: Record<string, number> }) {
             <span
               key={c.key}
               title={c.future ? "" : `${new Date(c.key).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })} : ${c.n} publication${c.n > 1 ? "s" : ""}`}
-              className="w-[13px] h-[13px] rounded-[3.5px]"
+              className="w-[11px] h-[11px] rounded-[3px]"
               style={{ background: c.future ? "transparent" : shade(c.n), border: c.n === 0 && !c.future ? "1px solid var(--line)" : undefined }}
             />
           ))}

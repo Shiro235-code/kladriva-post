@@ -9,7 +9,7 @@ import { Avatar, KindBadge, Logo } from "@/components/ui";
 import { sb } from "@/lib/supabase";
 import { POST_SELECT, type Post } from "@/lib/types";
 import { displayName, postImages, timeAgo } from "@/lib/utils";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, PenLine, MessagesSquare, TrendingUp, Sprout, Play } from "lucide-react";
 
 export default function Landing() {
   const { session, loading } = useAuth();
@@ -38,7 +38,7 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-canvas overflow-x-hidden">
-      <header className="max-w-[1200px] mx-auto px-5 sm:px-8 h-20 flex items-center justify-between">
+      <header className="max-w-[1480px] mx-auto px-5 sm:px-8 h-20 flex items-center justify-between">
         <Logo />
         <div className="flex items-center gap-1.5">
           <button onClick={toggle} className="icon-btn" aria-label={theme === "dark" ? "Passer en mode clair" : "Passer en mode sombre"}>
@@ -50,9 +50,9 @@ export default function Landing() {
       </header>
 
       {/* Héros : le titre monte en escalier, le fil réel défile à côté */}
-      <section className="max-w-[1200px] mx-auto px-5 sm:px-8 grid lg:grid-cols-[1.15fr_0.85fr] gap-12 lg:gap-16 pt-8 lg:pt-14 pb-20">
+      <section className="max-w-[1480px] mx-auto px-5 sm:px-8 grid lg:grid-cols-[1.15fr_0.85fr] gap-12 lg:gap-16 pt-8 lg:pt-14 pb-20">
         <div>
-          <h1 className="font-display font-extrabold text-ink leading-[0.92] text-[52px] sm:text-[78px] lg:text-[96px]">
+          <h1 className="font-display font-extrabold text-ink leading-[0.92] text-[52px] sm:text-[78px] lg:text-[96px] 2xl:text-[120px]">
             <span className="block">Chaque jour,</span>
             <span className="block pl-[0.6em]">une marche</span>
             <span className="block pl-[1.2em] text-cobalt">de plus.</span>
@@ -77,18 +77,20 @@ export default function Landing() {
 
       {/* Le parcours : trois marches */}
       <section className="bg-surface border-y border-line">
-        <div className="max-w-[1200px] mx-auto px-5 sm:px-8 py-20">
+        <div className="max-w-[1480px] mx-auto px-5 sm:px-8 py-20">
           <h2 className="font-display text-[34px] sm:text-[44px] font-bold leading-tight max-w-[18ch]">Comment ça marche</h2>
           <ol className="mt-12 grid md:grid-cols-3 gap-5 md:items-end">
             {[
-              { emoji: "✍️", title: "Tu publies", text: "Une avancée, une victoire, un blocage. Avec du texte, des captures ou une story de 24 h.", h: "md:min-h-[230px]" },
-              { emoji: "💬", title: "La promo répond", text: "Réactions, commentaires, réponses et messages privés, en temps réel.", h: "md:min-h-[290px]" },
-              { emoji: "🔥", title: "Tu progresses", text: "Ta série de jours, tes badges et le classement de la semaine rendent ton effort visible.", h: "md:min-h-[350px]" },
+              { icon: PenLine, title: "Tu publies", text: "Une avancée, une victoire, un blocage. Avec du texte, des images, une vidéo ou une story de 24 h.", h: "md:min-h-[230px]" },
+              { icon: MessagesSquare, title: "La promo répond", text: "Réactions, commentaires, réponses et messages privés, en temps réel.", h: "md:min-h-[290px]" },
+              { icon: TrendingUp, title: "Tu progresses", text: "Ta série de jours, tes badges et le classement de la semaine rendent ton effort visible.", h: "md:min-h-[350px]" },
             ].map((s, i) => (
               <li key={s.title} className={`rounded-3xl p-7 flex flex-col justify-between ${s.h}`} style={{ background: i === 2 ? "var(--cobalt)" : "var(--surface-2)", color: i === 2 ? "#fff" : undefined }}>
                 <span className="font-display text-[15px] font-bold opacity-60">Étape {i + 1}</span>
                 <div className="mt-10">
-                  <span className="text-4xl" aria-hidden>{s.emoji}</span>
+                  <span className="w-12 h-12 rounded-2xl grid place-items-center" style={{ background: i === 2 ? "rgba(255,255,255,0.16)" : "var(--surface)", color: i === 2 ? "#fff" : "var(--cobalt)" }} aria-hidden>
+                    <s.icon size={24} strokeWidth={2} />
+                  </span>
                   <p className="font-display text-[28px] font-bold mt-3 leading-tight">{s.title}</p>
                   <p className={i === 2 ? "text-white/85 mt-2 leading-relaxed" : "text-ink-2 mt-2 leading-relaxed"}>{s.text}</p>
                 </div>
@@ -98,12 +100,12 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="max-w-[1200px] mx-auto px-5 sm:px-8 py-20 grid md:grid-cols-[1fr_auto] gap-8 items-center">
+      <section className="max-w-[1480px] mx-auto px-5 sm:px-8 py-20 grid md:grid-cols-[1fr_auto] gap-8 items-center">
         <p className="font-display text-[36px] sm:text-[52px] font-bold leading-[1.02] max-w-[16ch]">Ta prochaine avancée mérite d&apos;être vue.</p>
         <Link href="/auth?mode=signup" className="btn btn-primary !px-8 !py-4 text-[17px] justify-self-start">Rejoindre la promo</Link>
       </section>
 
-      <footer className="max-w-[1200px] mx-auto px-5 sm:px-8 py-10 border-t border-line flex flex-wrap items-center justify-between gap-4 text-sm text-muted">
+      <footer className="max-w-[1480px] mx-auto px-5 sm:px-8 py-10 border-t border-line flex flex-wrap items-center justify-between gap-4 text-sm text-muted">
         <Logo size={26} />
         <span>Kladriva Post, le réseau des apprenants Kladriva.</span>
       </footer>
@@ -118,7 +120,7 @@ function LiveWall({ posts }: { posts: Post[] | null }) {
     return (
       <div className="h-[520px] rounded-[28px] bg-surface border border-line grid place-items-center p-10 text-center">
         <div>
-          <p className="text-5xl">🌱</p>
+          <span className="w-16 h-16 rounded-2xl bg-cobalt-soft text-cobalt grid place-items-center mx-auto"><Sprout size={30} /></span>
           <p className="font-display text-2xl font-bold mt-4">Le fil attend sa première avancée.</p>
           <p className="text-muted mt-2">Elle pourrait bien être la tienne.</p>
         </div>
@@ -147,6 +149,11 @@ function LiveWall({ posts }: { posts: Post[] | null }) {
               {img && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={img} alt="" className="mt-2.5 rounded-xl h-32 w-full object-cover" loading="lazy" />
+              )}
+              {!img && p.video_url && (
+                <div className="mt-2.5 rounded-xl h-32 w-full bg-[#0d1120] text-white grid place-items-center">
+                  <span className="w-11 h-11 rounded-full bg-white/15 grid place-items-center"><Play size={20} fill="currentColor" /></span>
+                </div>
               )}
               <p className="text-xs text-muted mt-2.5">
                 {p.likes.length > 0 && `${p.likes.length} réaction${p.likes.length > 1 ? "s" : ""}`}

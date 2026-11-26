@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search } from "lucide-react";
+import { Search, SearchX } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Feed } from "@/components/Feed";
 import { FollowButton } from "@/components/FollowButton";
@@ -40,7 +40,7 @@ function ExplorerInner() {
 
   return (
     <AppShell>
-      <div className="max-w-[620px] mx-auto">
+      <div className="max-w-[680px] 2xl:max-w-[780px] mx-auto">
         <h1 className="font-display text-[34px] font-bold leading-tight">Explorer</h1>
         <form
           onSubmit={(e) => {
@@ -71,7 +71,7 @@ function ExplorerInner() {
 
         <section className="mt-8">
           <h2 className="font-display text-xl font-semibold mb-3">{q ? `Publications avec « ${q} »` : "Toutes les publications"}</h2>
-          <Feed key={q} search={q || undefined} showComposer={false} empty={{ emoji: "🔍", title: "Aucune publication trouvée", text: "Essaie un autre mot ou un hashtag différent." }} />
+          <Feed key={q} search={q || undefined} showComposer={false} empty={{ icon: SearchX, title: "Aucune publication trouvée", text: "Essaie un autre mot ou un hashtag différent." }} />
         </section>
       </div>
     </AppShell>

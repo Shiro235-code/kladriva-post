@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, X } from "lucide-react";
+import { Heart, Send, X } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import { COMMENT_SELECT, type Comment } from "@/lib/types";
 import { cx, displayName, plural, timeAgo } from "@/lib/utils";
@@ -124,7 +124,7 @@ export function Comments({ postId, postAuthorId, onCount }: { postId: string; po
                 J&apos;aime{c.comment_likes.length > 0 && ` · ${c.comment_likes.length}`}
               </button>
             )}
-            {!uid && c.comment_likes.length > 0 && <span>❤️ {c.comment_likes.length}</span>}
+            {!uid && c.comment_likes.length > 0 && <span className="inline-flex items-center gap-1"><Heart size={12} className="text-coral" fill="currentColor" /> {c.comment_likes.length}</span>}
             {uid && <button onClick={() => startReply(c)} className="hover:underline">Répondre</button>}
             {uid === c.author_id && (
               <button onClick={() => del(c.id)} className="hover:text-coral sm:opacity-0 group-hover:opacity-100 focus:opacity-100 transition">Supprimer</button>

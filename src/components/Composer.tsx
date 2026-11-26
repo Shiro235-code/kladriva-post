@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ImagePlus, X } from "lucide-react";
+import { ImagePlus, Video, X } from "lucide-react";
 import { sb } from "@/lib/supabase";
 import type { PostKind } from "@/lib/types";
 import { KINDS, cx, displayName } from "@/lib/utils";
@@ -10,6 +10,7 @@ import { useToast } from "./Providers";
 import { Avatar, Modal } from "./ui";
 
 const MAX_IMAGES = 4;
+const MAX_VIDEO_MB = 50;
 const PLACEHOLDERS: Record<PostKind, string> = {
   update: "Qu'as-tu appris aujourd'hui ?",
   win: "Raconte ta victoire, même petite.",
@@ -46,7 +47,7 @@ export function ComposerTrigger({ groupId }: { groupId?: string }) {
             className="shrink-0 flex items-center gap-1.5 text-[13px] font-semibold px-3 py-1.5 rounded-xl hover:brightness-95 transition"
             style={{ background: k.bg, color: k.fg }}
           >
-            <span aria-hidden>{k.emoji}</span> {k.label}
+            <k.icon size={15} strokeWidth={2.3} aria-hidden /> {k.label}
           </button>
         ))}
       </div>
@@ -54,7 +55,7 @@ export function ComposerTrigger({ groupId }: { groupId?: string }) {
   );
 }
 
-type Pick = { file: File; url: string };
+type Pick = { file: File; url: string; video?: boolean };
 
 export function ComposerModal({
   open,
@@ -73,10 +74,11 @@ export function ComposerModal({
   const [kind, setKind] = useState<PostKind>(initialKind);
   const [picks, setPicks] = useState<Pick[]>([]);
   const [groupId, setGroupId] = useState<string>(initialGroupId || "");
-  const [myGroups, setMyGroups] = useState<{ id: string; name: string; emoji: string }[]>([]);
+  const [myGroups, setMyGroups] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLInputElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -88,9 +90,9 @@ export function ComposerModal({
     if (session) {
       sb()
         .from("group_members")
-        .select("group:groups(id,name,emoji)")
+        .select("group:groups(id,name)")
         .eq("user_id", session.user.id)
-        .then(({ data }) => setMyGroups(((data || []) as unknown as { group: { id: string; name: string; emoji: string } }[]).map((r) => r.group).filter(Boolean)));
+        .then(({ data }) => setMyGroups(((data || []) as unknown as { group: { id: string; name: string } }[]).map((r) => r.group).filter(Boolean)));
     }
   }, [open, initialGroupId, initialKind, session]);
 
@@ -101,21 +103,37 @@ export function ComposerModal({
     el.style.height = Math.min(320, el.scrollHeight) + "px";
   }, [text, open]);
 
+  const hasVideo = picks.some((p) => p.video);
+
   const addFiles = (files: FileList | null) => {
     if (!files) return;
+    setError(null);
     const next: Pick[] = [];
     for (const f of Array.from(files)) {
+      if (f.type.startsWith("video/")) {
+        if (!["video/mp4", "video/webm", "video/quicktime"].includes(f.type)) {
+          setError("Formats vidéo acceptés : MP4, WebM ou MOV.");
+          continue;
+        }
+        if (f.size > MAX_VIDEO_MB * 1024 * 1024) {
+          setError(`La vidéo dépasse ${MAX_VIDEO_MB} Mo. Raccourcis-la ou compresse-la avant de la publier.`);
+          continue;
+        }
+        // Une vidéo remplace les images : une publication = une vidéo, ou jusqu'à 4 images
+        setPicks([{ file: f, url: URL.createObjectURL(f), video: true }]);
+        return;
+      }
       if (!f.type.startsWith("image/")) {
-        setError("Seules les images sont acceptées.");
+        setError("Ce fichier n'est ni une image ni une vidéo.");
         continue;
       }
-      if (f.size > 6 * 1024 * 1024) {
-        setError(`« ${f.name} » dépasse 6 Mo.`);
+      if (f.size > 8 * 1024 * 1024) {
+        setError(`« ${f.name} » dépasse 8 Mo.`);
         continue;
       }
       next.push({ file: f, url: URL.createObjectURL(f) });
     }
-    setPicks((p) => [...p, ...next].slice(0, MAX_IMAGES));
+    if (next.length) setPicks((p) => [...p.filter((x) => !x.video), ...next].slice(0, MAX_IMAGES));
   };
 
   const reset = () => {
@@ -132,16 +150,22 @@ export function ComposerModal({
     setError(null);
     try {
       const urls: string[] = [];
+      let video_url: string | null = null;
       for (const p of picks) {
-        const ext = p.file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const ext = p.file.name.split(".").pop()?.toLowerCase() || (p.video ? "mp4" : "jpg");
         const path = `${session.user.id}/${crypto.randomUUID()}.${ext}`;
         const up = await sb().storage.from("media").upload(path, p.file, { contentType: p.file.type, cacheControl: "31536000" });
-        if (up.error) throw new Error("L'envoi d'une image a échoué. Vérifie ta connexion et réessaie.");
-        urls.push(sb().storage.from("media").getPublicUrl(path).data.publicUrl);
+        if (up.error) {
+          const tooBig = /size|large|payload/i.test(up.error.message);
+          throw new Error(tooBig ? `Fichier trop lourd : ${MAX_VIDEO_MB} Mo maximum.` : `L'envoi ${p.video ? "de la vidéo" : "d'une image"} a échoué. Vérifie ta connexion et réessaie.`);
+        }
+        const url = sb().storage.from("media").getPublicUrl(path).data.publicUrl;
+        if (p.video) video_url = url;
+        else urls.push(url);
       }
       const { error } = await sb()
         .from("posts")
-        .insert({ author_id: session.user.id, content: text.trim(), images: urls, kind, group_id: groupId || null });
+        .insert({ author_id: session.user.id, content: text.trim(), images: urls, video_url, kind, group_id: groupId || null });
       if (error) {
         if (error.message.includes("row-level security")) throw new Error("Rejoins ce groupe avant d'y publier.");
         throw new Error("La publication n'a pas pu être envoyée. Réessaie dans un instant.");
@@ -175,7 +199,7 @@ export function ComposerModal({
               style={kind === k.kind ? { background: k.bg, color: k.fg, boxShadow: `inset 0 0 0 1.5px ${k.fg}` } : undefined}
               aria-pressed={kind === k.kind}
             >
-              <span aria-hidden>{k.emoji}</span> {k.label}
+              <k.icon size={15} strokeWidth={2.3} aria-hidden /> {k.label}
             </button>
           ))}
         </div>
@@ -194,8 +218,7 @@ export function ComposerModal({
                 <option value="">Fil public</option>
                 {myGroups.map((g) => (
                   <option key={g.id} value={g.id}>
-                    {g.emoji ? `${g.emoji} ` : ""}
-                    {g.name}
+    {g.name}
                   </option>
                 ))}
               </select>
@@ -223,8 +246,12 @@ export function ComposerModal({
           <div className={cx("grid gap-2 mt-3", picks.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
             {picks.map((p, i) => (
               <div key={p.url} className="relative rounded-2xl overflow-hidden border border-line bg-surface-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.url} alt={`Image ${i + 1}`} className={cx("w-full object-cover", picks.length === 1 ? "max-h-[360px]" : "h-40")} />
+                {p.video ? (
+                  <video src={p.url} controls playsInline className="w-full max-h-[380px] bg-black" />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.url} alt={`Image ${i + 1}`} className={cx("w-full object-cover", picks.length === 1 ? "max-h-[360px]" : "h-40")} />
+                )}
                 <button
                   onClick={() => setPicks((all) => all.filter((x) => x.url !== p.url))}
                   className="absolute top-2 right-2 bg-[#0d1120]/75 text-white rounded-full p-1.5 hover:bg-[#0d1120]"
@@ -240,25 +267,29 @@ export function ComposerModal({
         {error && <p className="text-sm text-coral mt-3 font-medium">{error}</p>}
 
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-line">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => fileRef.current?.click()}
-              disabled={picks.length >= MAX_IMAGES}
+              disabled={hasVideo || picks.length >= MAX_IMAGES}
               className="btn btn-soft !px-3 !py-2 text-[13px]"
               title={`Jusqu'à ${MAX_IMAGES} images`}
             >
-              <ImagePlus size={17} /> Images {picks.length > 0 && `(${picks.length}/${MAX_IMAGES})`}
+              <ImagePlus size={17} /> Images {!hasVideo && picks.length > 0 && `(${picks.length}/${MAX_IMAGES})`}
+            </button>
+            <button onClick={() => videoRef.current?.click()} className="btn btn-soft !px-3 !py-2 text-[13px]" title={`Une vidéo, ${MAX_VIDEO_MB} Mo maximum`}>
+              <Video size={17} /> Vidéo
             </button>
             <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+            <input ref={videoRef} type="file" accept="video/mp4,video/webm,video/quicktime" hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
           </div>
           <div className="flex items-center gap-3">
             {remaining < 300 && <span className={cx("text-xs tabular-nums", remaining < 50 ? "text-coral" : "text-muted")}>{remaining}</span>}
             <button onClick={submit} disabled={!canPost} className="btn btn-primary !px-5">
-              {busy ? "Publication…" : "Publier"}
+              {busy ? (hasVideo ? "Envoi de la vidéo…" : "Publication…") : "Publier"}
             </button>
           </div>
         </div>
-        <p className="text-xs text-muted mt-2 hidden sm:block">Astuce : Ctrl + Entrée pour publier, et colle une capture d&apos;écran directement.</p>
+        <p className="text-xs text-muted mt-2 hidden sm:block">Ctrl + Entrée pour publier. Tu peux coller une capture d&apos;écran directement. Vidéo : MP4, WebM ou MOV, 50 Mo maximum.</p>
       </div>
     </Modal>
   );
