@@ -375,10 +375,10 @@ export function Bubble({
     <span className={cx("inline-flex items-center gap-1 text-[11px] leading-none whitespace-nowrap", mine && !onlyEmoji ? "text-white/75" : "text-muted")}>
       {time}
       {edited && <span className="font-medium">Modifié</span>}
-      {mine && delivery === "pending" && <Clock3 size={12} aria-label="En cours d’envoi" title="En cours d’envoi" />}
-      {mine && delivery === "sent" && !(readCount && readCount > 0) && <Check size={14} aria-label="Enregistré sur le serveur" title="Enregistré sur le serveur" />}
-      {mine && delivery === "sent" && readCount !== undefined && readCount > 0 && <><CheckCheck size={15} className={onlyEmoji ? "text-cobalt" : "text-[#9be7ff]"} aria-label={`Lu par ${readCount}`} title={`Lu par ${readCount}`} /><span>Lu par {readCount}</span></>}
-      {mine && delivery === "read" && <CheckCheck size={15} className={onlyEmoji ? "text-cobalt" : "text-[#9be7ff]"} aria-label="Lu par le destinataire" title="Lu par le destinataire" />}
+      {mine && delivery === "pending" && <Clock3 size={12} aria-label="En cours d’envoi" />}
+      {mine && delivery === "sent" && !(readCount && readCount > 0) && <Check size={14} aria-label="Enregistré sur le serveur" />}
+      {mine && delivery === "sent" && readCount !== undefined && readCount > 0 && <><CheckCheck size={15} className={onlyEmoji ? "text-cobalt" : "text-[#9be7ff]"} aria-label={`Lu par ${readCount}`} /><span>Lu par {readCount}</span></>}
+      {mine && delivery === "read" && <CheckCheck size={15} className={onlyEmoji ? "text-cobalt" : "text-[#9be7ff]"} aria-label="Lu par le destinataire" />}
     </span>
   );
 
