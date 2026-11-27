@@ -12,6 +12,7 @@ import { Avatar, Spinner } from "./ui";
 import { Bubble, CHAT_BG, ChatComposer, DaySeparator, GroupAvatar, ImageViewer, hhmm, uploadChatImage, SwipeReply, type ChatReply } from "./chat";
 import { GroupInfo } from "./GroupInfo";
 import { cleanupUnpublishedVoice, queueUnpublishedVoice, uploadVoice, voiceObjectPath, type VoicePayload } from "./VoiceMessage";
+import { useMessageInteractions } from "./MessageInteractions";
 
 /**
  * Discussion de groupe façon WhatsApp : nom coloré de l'expéditeur, bulles groupées,
@@ -55,9 +56,11 @@ export function GroupChat({
   const typingReady = useRef(false);
   const lastTypingSent = useRef(0);
   const nearBottom = useRef(true);
+  const interactions = useMessageInteractions("group", group.id, uid || "", msgs);
 
   useEffect(() => setGroup(initial), [initial]);
   useEffect(() => { if (uid) void cleanupUnpublishedVoice(uid); }, [uid]);
+  useEffect(() => { if (replyTo && interactions.hiddenIds.has(replyTo.id)) setReplyTo(null); }, [interactions.hiddenIds, replyTo]);
 
   const byId = (id: string) => members.find((m) => m.id === id);
   const me = members.find((m) => m.id === uid);
@@ -114,6 +117,14 @@ export function GroupChat({
           if (m.sender_id !== uid) {
             setTyping((current) => { const next = { ...current }; delete next[m.sender_id]; return next; });
             markRead();
+          }
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` }, (p) => {
+          const message = p.new as GroupMessage;
+          setMsgs((all) => all.map((item) => item.id === message.id ? message : item));
+          if (message.deleted_at) {
+            setReplyTo((current) => current?.id === message.id ? null : current);
+            setReplyTargets((targets) => ({ ...targets, [message.id]: message }));
           }
         })
         .on("postgres_changes", { event: "DELETE", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` }, (p) => {
@@ -236,14 +247,37 @@ export function GroupChat({
     }
   };
 
+  const editMessage = async (message: GroupMessage, content: string) => {
+    const updated = await interactions.editMessage(message.id, content);
+    if (!updated) return false;
+    setMsgs((all) => all.map((item) => item.id === message.id ? updated as GroupMessage : item));
+    onActivity?.();
+    return true;
+  };
+  const hideMessage = async (messageId: string) => {
+    const hidden = await interactions.hideForMe(messageId);
+    if (hidden) { setReplyTo((current) => current?.id === messageId ? null : current); onActivity?.(); }
+    return hidden;
+  };
+  const deleteForEveryone = async (message: GroupMessage) => {
+    const updated = await interactions.deleteForEveryone(message.id);
+    if (!updated) return false;
+    setMsgs((all) => all.map((item) => item.id === message.id ? updated as GroupMessage : item));
+    setReplyTo((current) => current?.id === message.id ? null : current);
+    setReplyTargets((all) => ({ ...all, [message.id]: updated as GroupMessage }));
+    onActivity?.();
+    return true;
+  };
+
   const resolveReply = (id?: string | null): ChatReply | null => {
-    if (!id) return null;
+    if (!id || interactions.hiddenIds.has(id)) return null;
     const target = msgs.find((message) => message.id === id) || replyTargets[id];
     if (!target) return null;
     const author = target.sender_id === uid ? displayName(profile) : displayName(byId(target.sender_id));
-    return { id: target.id, author, content: target.content, image_url: target.image_url, audio_path: target.audio_path, audio_duration_ms: target.audio_duration_ms };
+    return { id: target.id, author, content: target.deleted_at ? "Message supprimé" : target.content, image_url: target.deleted_at ? null : target.image_url, audio_path: target.deleted_at ? null : target.audio_path, audio_duration_ms: target.deleted_at ? null : target.audio_duration_ms, deleted_at: target.deleted_at };
   };
   const startReply = (message: GroupMessage) => {
+    if (message.deleted_at || interactions.hiddenIds.has(message.id)) return toast("Ce message ne peut plus être cité.", "info");
     if (message.id.startsWith("tmp-")) return toast("Attends que le message soit enregistré avant d’y répondre.", "info");
     setReplyTo(message);
   };
@@ -274,7 +308,8 @@ export function GroupChat({
     nearBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 110;
     setShowRecent(!nearBottom.current);
   };
-  const firstUnreadId = myReadAt ? msgs.find((message) => message.sender_id !== uid && new Date(message.created_at) > new Date(myReadAt))?.id : null;
+  const visibleMsgs = msgs.filter((message) => !interactions.hiddenIds.has(message.id));
+  const firstUnreadId = myReadAt ? visibleMsgs.find((message) => message.sender_id !== uid && new Date(message.created_at) > new Date(myReadAt))?.id : null;
 
   const onlineCount = members.filter((m) => online.has(m.id) && m.id !== uid).length;
   const typers = Object.keys(typing).map(byId).filter(Boolean) as Member[];
@@ -317,16 +352,16 @@ export function GroupChat({
 
         <div ref={scrollRef} onScroll={handleThreadScroll} className="relative flex-1 overflow-y-auto scroll-thin px-2 sm:px-[6%] py-4 flex flex-col min-h-0" style={CHAT_BG}>
           {typingUnavailable && <p className="self-center text-[11px] text-muted bg-surface/90 border border-line rounded-full px-3 py-1 mb-2">L’indicateur de saisie nécessite les autorisations Broadcast privées côté Supabase.</p>}
-          {loading ? (
+          {loading || !interactions.ready ? (
             <div className="flex justify-center py-10"><Spinner /></div>
-          ) : msgs.length === 0 ? (
+          ) : visibleMsgs.length === 0 ? (
             <div className="m-auto text-center max-w-xs bg-surface/90 border border-line rounded-2xl px-6 py-6">
               <GroupAvatar group={group} size={64} className="mx-auto" />
               <p className="font-display text-xl font-bold mt-3">{group.name}</p>
               <p className="text-muted text-sm mt-1">Les messages sont visibles par les {plural(members.length, "membre")} du groupe. Dis bonjour !</p>
             </div>
           ) : (
-            msgs.map((m, i) => {
+            visibleMsgs.map((m, i) => {
               const mine = m.sender_id === uid;
               const author = mine ? profile : byId(m.sender_id);
               const prev = msgs[i - 1];
@@ -364,10 +399,18 @@ export function GroupChat({
                       groupedTop={groupedTop}
                       groupedBottom={groupedBottom}
                       onImage={setViewer}
-                      onReply={() => startReply(m)}
+                      onReply={m.id.startsWith("tmp-") ? undefined : () => startReply(m)}
                       hasReply={!!m.reply_to_id}
                       reply={resolveReply(m.reply_to_id)}
                       onJumpReply={jumpToMessage}
+                      edited={!!m.edited_at}
+                      deleted={!!m.deleted_at}
+                      canEdit={mine && !m.id.startsWith("tmp-") && !m.deleted_at && !m.image_url && !m.audio_path && !!m.content.trim()}
+                      reactions={m.deleted_at ? [] : interactions.reactionsByMessage[m.id] || []}
+                      onReact={(emoji) => interactions.react(m.id, emoji)}
+                      onEdit={(content) => editMessage(m, content)}
+                      onDeleteForMe={() => hideMessage(m.id)}
+                      onDeleteForEveryone={mine ? () => deleteForEveryone(m) : undefined}
                     /></SwipeReply>
                   </div>
                 </div>

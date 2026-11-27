@@ -16,6 +16,7 @@ import { sb } from "@/lib/supabase";
 import type { GroupLite, Message, Profile } from "@/lib/types";
 import { cx, displayName, firstName } from "@/lib/utils";
 import { cleanupUnpublishedVoice, queueUnpublishedVoice, uploadVoice, voiceObjectPath, type VoicePayload } from "@/components/VoiceMessage";
+import { useMessageInteractions } from "@/components/MessageInteractions";
 
 type Row = {
   key: string;
@@ -81,22 +82,27 @@ function MessagesInner() {
 
     const convIds = convs.map((c) => c.id);
     const groupIds = groups.map((g) => g.group!.id);
-    const [{ data: dmMsgs }, { data: gMsgs }] = await Promise.all([
+    const [{ data: dmMsgs }, { data: gMsgs }, { data: hiddenDm }, { data: hiddenGroups }] = await Promise.all([
       convIds.length
-        ? sb().from("messages").select("conversation_id, content, image_url, audio_path, sender_id, created_at").in("conversation_id", convIds).order("created_at", { ascending: false }).limit(400)
-        : Promise.resolve({ data: [] as { conversation_id: string; content: string; image_url: string | null; audio_path: string | null; sender_id: string; created_at: string }[] }),
+        ? sb().from("messages").select("id, conversation_id, content, image_url, audio_path, sender_id, created_at, deleted_at").in("conversation_id", convIds).order("created_at", { ascending: false }).limit(400)
+        : Promise.resolve({ data: [] as { id: string; conversation_id: string; content: string; image_url: string | null; audio_path: string | null; sender_id: string; created_at: string; deleted_at: string | null }[] }),
       groupIds.length
-        ? sb().from("group_messages").select("group_id, content, image_url, audio_path, sender_id, created_at, sender:profiles!group_messages_sender_id_fkey(full_name,username)").in("group_id", groupIds).order("created_at", { ascending: false }).limit(400)
+        ? sb().from("group_messages").select("id, group_id, content, image_url, audio_path, sender_id, created_at, deleted_at, sender:profiles!group_messages_sender_id_fkey(full_name,username)").in("group_id", groupIds).order("created_at", { ascending: false }).limit(400)
         : Promise.resolve({ data: [] }),
+      convIds.length ? sb().from("dm_message_hidden").select("message_id").eq("user_id", uid).in("conversation_id", convIds) : Promise.resolve({ data: [] }),
+      groupIds.length ? sb().from("group_message_hidden").select("message_id").eq("user_id", uid).in("group_id", groupIds) : Promise.resolve({ data: [] }),
     ]);
+    const hiddenDmIds = new Set((hiddenDm || []).map((item) => item.message_id));
+    const hiddenGroupIds = new Set((hiddenGroups || []).map((item) => item.message_id));
 
     const out: Row[] = [];
     for (const c of convs) {
       const me = c.conversation_members.find((m) => m.user_id === uid);
       const o = c.conversation_members.find((m) => m.user_id !== uid);
-      const msgs = (dmMsgs || []).filter((m) => m.conversation_id === c.id);
+      const allConversationMsgs = (dmMsgs || []).filter((m) => m.conversation_id === c.id);
+      const msgs = allConversationMsgs.filter((m) => !hiddenDmIds.has(m.id));
       const last = msgs[0];
-      if (!last && c.id !== activeDm) continue;
+      if (!allConversationMsgs.length && c.id !== activeDm) continue;
       const unread = me ? msgs.filter((m) => m.sender_id !== uid && new Date(m.created_at) > new Date(me.last_read_at)).length : 0;
       out.push({
         key: `dm-${c.id}`,
@@ -104,7 +110,7 @@ function MessagesInner() {
         id: c.id,
         title: displayName(o?.profile),
         at: last?.created_at || c.last_message_at,
-        preview: last?.audio_path ? "Message vocal" : last?.content || (last?.image_url ? "Photo" : "Nouvelle conversation"),
+        preview: last ? last.deleted_at ? "Message supprimé" : last.audio_path ? "Message vocal" : last.content || (last.image_url ? "Photo" : "") : allConversationMsgs.length ? "Aucun message visible" : "Nouvelle conversation",
         previewImage: !!last?.image_url,
         who: "",
         mineLast: last?.sender_id === uid,
@@ -115,10 +121,11 @@ function MessagesInner() {
         myReadAt: me?.last_read_at ?? null,
       });
     }
-    type GM = { group_id: string; content: string; image_url: string | null; audio_path: string | null; sender_id: string; created_at: string; sender: { full_name: string; username: string } | null };
+    type GM = { id: string; group_id: string; content: string; image_url: string | null; audio_path: string | null; sender_id: string; created_at: string; deleted_at: string | null; sender: { full_name: string; username: string } | null };
     for (const r of groups) {
       const g = r.group!;
-      const msgs = ((gMsgs || []) as unknown as GM[]).filter((m) => m.group_id === g.id);
+      const allGroupMsgs = ((gMsgs || []) as unknown as GM[]).filter((m) => m.group_id === g.id);
+      const msgs = allGroupMsgs.filter((m) => !hiddenGroupIds.has(m.id));
       const last = msgs[0];
       const unread = msgs.filter((m) => m.sender_id !== uid && new Date(m.created_at) > new Date(r.last_read_at)).length;
       out.push({
@@ -127,7 +134,7 @@ function MessagesInner() {
         id: g.id,
         title: g.name,
         at: last?.created_at || g.last_message_at,
-        preview: last ? last.audio_path ? "Message vocal" : last.content || (last.image_url ? "Photo" : "") : "Groupe créé, dis bonjour",
+        preview: last ? last.deleted_at ? "Message supprimé" : last.audio_path ? "Message vocal" : last.content || (last.image_url ? "Photo" : "") : allGroupMsgs.length ? "Aucun message visible" : "Groupe créé, dis bonjour",
         previewImage: !!last?.image_url,
         who: last ? (last.sender_id === uid ? "Toi" : firstName(last.sender)) : "",
         mineLast: last?.sender_id === uid,
@@ -151,8 +158,12 @@ function MessagesInner() {
     const ch = sb()
       .channel(`inbox-${uid}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, () => load())
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, () => load())
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "conversation_members" }, () => load())
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "group_messages" }, () => load())
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "group_messages" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "dm_message_hidden", filter: `user_id=eq.${uid}` }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "group_message_hidden", filter: `user_id=eq.${uid}` }, () => load())
       .on("postgres_changes", { event: "*", schema: "public", table: "group_members" }, () => load())
       .subscribe();
     return () => {
@@ -314,11 +325,13 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSent = useRef(0);
   const nearBottom = useRef(true);
+  const interactions = useMessageInteractions("dm", convId, uid, msgs);
 
   useEffect(() => {
     if (row?.otherReadAt) setOtherReadAt(row.otherReadAt);
   }, [row?.otherReadAt]);
   useEffect(() => { void cleanupUnpublishedVoice(uid); }, [uid]);
+  useEffect(() => { if (replyTo && interactions.hiddenIds.has(replyTo.id)) setReplyTo(null); }, [interactions.hiddenIds, replyTo]);
 
   const markRead = useCallback(() => {
     sb().from("conversation_members").update({ last_read_at: new Date().toISOString() }).eq("conversation_id", convId).eq("user_id", uid).then(() => onActivity());
@@ -353,6 +366,14 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
           const m = p.new as Message;
           setMsgs((all) => (all.some((x) => x.id === m.id) ? all : [...all, m]));
           if (m.sender_id !== uid) { setTyping(false); markRead(); }
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${convId}` }, (p) => {
+          const message = p.new as Message;
+          setMsgs((all) => all.map((item) => item.id === message.id ? message : item));
+          if (message.deleted_at) {
+            setReplyTo((current) => current?.id === message.id ? null : current);
+            setReplyTargets((targets) => ({ ...targets, [message.id]: message }));
+          }
         })
         .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages", filter: `conversation_id=eq.${convId}` }, (p) => {
           const id = (p.old as { id?: string }).id;
@@ -452,13 +473,36 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
     }
   };
 
+  const editMessage = async (message: Message, content: string) => {
+    const updated = await interactions.editMessage(message.id, content);
+    if (!updated) return false;
+    setMsgs((all) => all.map((item) => item.id === message.id ? updated as Message : item));
+    onActivity();
+    return true;
+  };
+  const hideMessage = async (messageId: string) => {
+    const hidden = await interactions.hideForMe(messageId);
+    if (hidden) { setReplyTo((current) => current?.id === messageId ? null : current); onActivity(); }
+    return hidden;
+  };
+  const deleteForEveryone = async (message: Message) => {
+    const updated = await interactions.deleteForEveryone(message.id);
+    if (!updated) return false;
+    setMsgs((all) => all.map((item) => item.id === message.id ? updated as Message : item));
+    setReplyTo((current) => current?.id === message.id ? null : current);
+    setReplyTargets((all) => ({ ...all, [message.id]: updated as Message }));
+    onActivity();
+    return true;
+  };
+
   const resolveReply = (id?: string | null): ChatReply | null => {
-    if (!id) return null;
+    if (!id || interactions.hiddenIds.has(id)) return null;
     const target = msgs.find((message) => message.id === id) || replyTargets[id];
     if (!target) return null;
-    return { id: target.id, author: target.sender_id === uid ? displayName(profile) : displayName(other), content: target.content, image_url: target.image_url, audio_path: target.audio_path, audio_duration_ms: target.audio_duration_ms };
+    return { id: target.id, author: target.sender_id === uid ? displayName(profile) : displayName(other), content: target.deleted_at ? "Message supprimé" : target.content, image_url: target.deleted_at ? null : target.image_url, audio_path: target.deleted_at ? null : target.audio_path, audio_duration_ms: target.deleted_at ? null : target.audio_duration_ms, deleted_at: target.deleted_at };
   };
   const startReply = (message: Message) => {
+    if (message.deleted_at || interactions.hiddenIds.has(message.id)) return toast("Ce message ne peut plus être cité.", "info");
     if (message.id.startsWith("tmp-")) return toast("Attends que le message soit enregistré avant d’y répondre.", "info");
     setReplyTo(message);
   };
@@ -489,7 +533,8 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
     nearBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 110;
     setShowRecent(!nearBottom.current);
   };
-  const firstUnreadId = myReadAt ? msgs.find((message) => message.sender_id !== uid && new Date(message.created_at) > new Date(myReadAt))?.id : null;
+  const visibleMsgs = msgs.filter((message) => !interactions.hiddenIds.has(message.id));
+  const firstUnreadId = myReadAt ? visibleMsgs.find((message) => message.sender_id !== uid && new Date(message.created_at) > new Date(myReadAt))?.id : null;
 
   const readAt = otherReadAt ? new Date(otherReadAt) : null;
 
@@ -511,16 +556,16 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
       </div>
       <div ref={scrollRef} onScroll={handleThreadScroll} className="relative flex-1 overflow-y-auto scroll-thin px-2 sm:px-[6%] py-4 flex flex-col min-h-0" style={CHAT_BG}>
         {typingUnavailable && <p className="self-center text-[11px] text-muted bg-surface/90 border border-line rounded-full px-3 py-1 mb-2">L’indicateur de saisie nécessite les autorisations Broadcast privées côté Supabase.</p>}
-        {loading ? (
+        {loading || !interactions.ready ? (
           <div className="flex justify-center py-10"><Spinner /></div>
-        ) : msgs.length === 0 ? (
+        ) : visibleMsgs.length === 0 ? (
           <div className="m-auto text-center bg-surface/90 border border-line rounded-2xl px-6 py-6 max-w-xs">
             {other && <Avatar profile={other} size={64} className="mx-auto" />}
             <p className="font-display text-xl font-bold mt-3">{displayName(other)}</p>
             <p className="text-muted text-sm mt-1">Dis bonjour à {firstName(other)}.</p>
           </div>
         ) : (
-          msgs.map((m, i) => {
+          visibleMsgs.map((m, i) => {
             const mine = m.sender_id === uid;
             const prev = msgs[i - 1];
             const next = msgs[i + 1];
@@ -534,7 +579,7 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
                 {newDay && <DaySeparator iso={m.created_at} />}
                 {firstUnreadId === m.id && <div className="self-center my-3 rounded-full bg-cobalt-soft px-3 py-1 text-[11px] font-bold text-cobalt">Nouveaux messages</div>}
                 <div className={cx("flex", mine ? "justify-end" : "justify-start", groupedTop ? "mt-[3px]" : "mt-2.5")}>
-                  <SwipeReply onReply={() => startReply(m)}><Bubble mine={mine} text={m.content} image={m.image_url} audioPath={m.audio_path} audioDurationMs={m.audio_duration_ms} time={hhmm(m.created_at)} delivery={mine ? delivery : undefined} groupedTop={groupedTop} groupedBottom={groupedBottom} onImage={setViewer} onReply={() => startReply(m)} hasReply={!!m.reply_to_id} reply={resolveReply(m.reply_to_id)} onJumpReply={jumpToMessage} /></SwipeReply>
+                  <SwipeReply onReply={() => startReply(m)}><Bubble mine={mine} text={m.content} image={m.image_url} audioPath={m.audio_path} audioDurationMs={m.audio_duration_ms} time={hhmm(m.created_at)} delivery={mine ? delivery : undefined} groupedTop={groupedTop} groupedBottom={groupedBottom} onImage={setViewer} onReply={m.id.startsWith("tmp-") ? undefined : () => startReply(m)} hasReply={!!m.reply_to_id} reply={resolveReply(m.reply_to_id)} onJumpReply={jumpToMessage} edited={!!m.edited_at} deleted={!!m.deleted_at} canEdit={mine && !m.id.startsWith("tmp-") && !m.deleted_at && !m.image_url && !m.audio_path && !!m.content.trim()} reactions={m.deleted_at ? [] : interactions.reactionsByMessage[m.id] || []} onReact={(emoji) => interactions.react(m.id, emoji)} onEdit={(content) => editMessage(m, content)} onDeleteForMe={() => hideMessage(m.id)} onDeleteForEveryone={mine ? () => deleteForEveryone(m) : undefined} /></SwipeReply>
                 </div>
               </div>
             );
