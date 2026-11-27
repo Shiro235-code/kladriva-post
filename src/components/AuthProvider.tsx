@@ -22,6 +22,38 @@ const AuthContext = createContext<Ctx>({
   signOut: async () => {},
 });
 
+function pendingPushKey(uid: string) { return `kp-push-delete-pending:${uid}`; }
+
+function rememberPushEndpoint(uid: string, endpoint: string) {
+  try {
+    const key = pendingPushKey(uid);
+    const stored = JSON.parse(localStorage.getItem(key) || "[]") as string[];
+    if (!stored.includes(endpoint)) localStorage.setItem(key, JSON.stringify([...stored, endpoint]));
+  } catch { /* Le navigateur peut bloquer le stockage local. */ }
+}
+
+async function retryPendingPushDeletes(uid: string) {
+  try {
+    const key = pendingPushKey(uid);
+    const endpoints = JSON.parse(localStorage.getItem(key) || "[]") as unknown;
+    if (!Array.isArray(endpoints)) return;
+    const remaining: string[] = [];
+    for (const endpoint of endpoints) {
+      if (typeof endpoint !== "string") continue;
+      const { error } = await sb().from("push_subscriptions").delete().eq("user_id", uid).eq("endpoint", endpoint);
+      if (error) remaining.push(endpoint);
+    }
+    if (remaining.length) localStorage.setItem(key, JSON.stringify(remaining));
+    else localStorage.removeItem(key);
+  } catch { /* Réessaie à la prochaine ouverture de session. */ }
+}
+
+async function disableMessagePreviews(uid: string) {
+  // Normalise uniquement les lignes de l'utilisateur connecté, sous ses politiques RLS.
+  await sb().from("push_subscriptions").update({ show_preview: false })
+    .eq("user_id", uid).eq("show_preview", true);
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -70,11 +102,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadProfile]);
 
   const refreshProfile = useCallback(() => loadProfile(session?.user.id), [loadProfile, session]);
+  useEffect(() => {
+    const uid = session?.user.id;
+    if (uid && typeof window !== "undefined") {
+      void retryPendingPushDeletes(uid);
+      void disableMessagePreviews(uid);
+    }
+  }, [session?.user.id]);
+
   const signOut = useCallback(async () => {
+    // Retire l’abonnement de cet appareil avant de fermer la session pour éviter
+    // que les prochains messages du compte arrivent sur un navigateur partagé.
+    if (session?.user.id && typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        const subscription = await registration?.pushManager.getSubscription();
+        if (subscription) {
+          const endpoint = subscription.endpoint;
+          const { error } = await sb().from("push_subscriptions").delete().eq("user_id", session.user.id).eq("endpoint", endpoint);
+          if (error) rememberPushEndpoint(session.user.id, endpoint);
+          else {
+            try {
+              const key = pendingPushKey(session.user.id);
+              const queued = JSON.parse(localStorage.getItem(key) || "[]") as unknown;
+              if (Array.isArray(queued)) {
+                const remaining = queued.filter((item) => item !== endpoint);
+                if (remaining.length) localStorage.setItem(key, JSON.stringify(remaining));
+                else localStorage.removeItem(key);
+              }
+            } catch {}
+          }
+          // Coupe immédiatement les notifications de ce navigateur, même si le
+          // réseau a échoué. La suppression RLS sera retentée à la prochaine session.
+          await subscription.unsubscribe();
+        }
+      } catch { /* La déconnexion doit rester possible si le push ou le réseau est indisponible. */ }
+      try { localStorage.removeItem("kp-push-device-owner"); } catch {}
+    }
     await sb().auth.signOut();
     setProfile(null);
     setSession(null);
-  }, []);
+  }, [session]);
 
   const minutes = Math.round(Math.abs(skew) / 60);
 

@@ -1,4 +1,4 @@
-/* Service Worker prêt à afficher un push futur. Aucun abonnement ni envoi n'est activé ici. */
+/* Affiche les payloads title/body/url/tag envoyés par l'Edge Function push-dispatcher. */
 self.addEventListener("push", (event) => {
   let payload = {};
   try { payload = event.data ? event.data.json() : {}; } catch { payload = {}; }
@@ -10,9 +10,12 @@ self.addEventListener("push", (event) => {
     if (parsed.origin === self.location.origin) url = `${parsed.pathname}${parsed.search}${parsed.hash}`;
   } catch { /* Garde la route interne par défaut. */ }
 
-  event.waitUntil(self.registration.showNotification(payload.title || "Kladriva Post", {
-    body: payload.body || "Tu as reçu un nouveau message.",
-    tag: payload.tag || (payload.notification_id ? `kladriva-${payload.notification_id}` : "kladriva-message"),
+  const title = typeof payload.title === "string" && payload.title ? payload.title : "Kladriva Post";
+  const body = typeof payload.body === "string" ? payload.body : "Tu as reçu un nouveau message.";
+  const tag = typeof payload.tag === "string" && payload.tag ? payload.tag : "kladriva-message";
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    tag,
     data: { url },
     renotify: false,
   }));

@@ -14,6 +14,8 @@ npm install
 npm run dev
 ```
 
+Pour les notifications Web Push, définir aussi `NEXT_PUBLIC_VAPID_PUBLIC_KEY` avec la **clé publique** VAPID du projet. La clé privée VAPID et toute clé `service_role` restent exclusivement dans les secrets Supabase.
+
 ## Base de données
 - `supabase/schema.sql` : schéma de base (V1).
 - `supabase/migrations/002_v2.sql` : réactions, réponses, mentions, abonnements, enregistrements, stories, notifications, séries et classement.

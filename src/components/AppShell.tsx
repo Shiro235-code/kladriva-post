@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Home, Compass, Users, MessageCircle, Bell, Trophy, Bookmark, User, LogOut, Search, Plus, Moon, Sun, PenLine, Flame, Sprout, Medal } from "lucide-react";
+import { Home, Compass, Users, MessageCircle, Bell, Trophy, Bookmark, User, LogOut, Search, Plus, Moon, Sun, PenLine, Flame, Sprout, Medal, Settings } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 import { useActivity, useTheme } from "./Providers";
 import { Avatar, Logo, LogoMark } from "./ui";
@@ -51,6 +51,7 @@ export function AppShell({ children, wide = false, full = false, chat = false }:
     { href: "/groups", label: "Groupes", icon: Users },
     { href: "/messages", label: "Messages", icon: MessageCircle, badge: unreadMessages, auth: true },
     { href: "/notifications", label: "Notifications", icon: Bell, badge: unreadNotifs, auth: true },
+    { href: "/settings/notifications", label: "Préférences", icon: Settings, auth: true },
     { href: "/classement", label: "Classement", icon: Trophy },
     { href: "/enregistres", label: "Enregistrés", icon: Bookmark, auth: true },
     { href: me, label: "Profil", icon: User },
@@ -72,10 +73,13 @@ export function AppShell({ children, wide = false, full = false, chat = false }:
         <div className="flex items-center gap-0.5">
           <button onClick={() => setPalette(true)} className="icon-btn" aria-label="Rechercher"><Search size={20} /></button>
           {!signedOut ? (
-            <Link href="/notifications" className="icon-btn relative" aria-label="Notifications">
-              <Bell size={20} />
-              <Dot n={unreadNotifs} />
-            </Link>
+            <>
+              <Link href="/settings/notifications" className="icon-btn" aria-label="Préférences de notifications"><Settings size={19} /></Link>
+              <Link href="/notifications" className="icon-btn relative" aria-label="Notifications">
+                <Bell size={20} />
+                <Dot n={unreadNotifs} />
+              </Link>
+            </>
           ) : (
             <Link href="/auth" className="btn btn-primary !py-1.5 !px-3.5 text-sm ml-1">Rejoindre</Link>
           )}
