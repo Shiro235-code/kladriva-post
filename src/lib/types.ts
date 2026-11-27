@@ -58,6 +58,7 @@ export type Message = {
   content: string;
   image_url: string | null;
   created_at: string;
+  reply_to_id?: string | null;
 };
 
 export type GroupMessage = {
@@ -67,6 +68,7 @@ export type GroupMessage = {
   content: string;
   image_url: string | null;
   created_at: string;
+  reply_to_id?: string | null;
 };
 
 export type GroupLite = { id: string; name: string; description?: string; color: string; icon: string; avatar_url?: string | null; created_by?: string };

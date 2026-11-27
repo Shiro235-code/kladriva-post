@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, CheckCheck, Check, MessageSquarePlus, Search, Users, MessagesSquare, Image as ImageIcon } from "lucide-react";
+import { ArrowLeft, CheckCheck, Check, MessageSquarePlus, Search, Users, MessagesSquare, Image as ImageIcon, ArrowDown } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { useActivity, useToast } from "@/components/Providers";
@@ -11,7 +11,7 @@ import { Avatar, Modal, Spinner } from "@/components/ui";
 import { GroupChat } from "@/components/GroupChat";
 import { NewGroup } from "@/components/NewGroup";
 import { PeoplePicker } from "@/components/PeoplePicker";
-import { Bubble, CHAT_BG, ChatComposer, DaySeparator, GroupAvatar, ImageViewer, hhmm, uploadChatImage } from "@/components/chat";
+import { Bubble, CHAT_BG, ChatComposer, DaySeparator, GroupAvatar, ImageViewer, hhmm, uploadChatImage, SwipeReply, type ChatReply } from "@/components/chat";
 import { sb } from "@/lib/supabase";
 import type { GroupLite, Message, Profile } from "@/lib/types";
 import { cx, displayName, firstName } from "@/lib/utils";
@@ -30,6 +30,7 @@ type Row = {
   unread: number;
   other?: Profile | null;
   otherReadAt?: string | null;
+  myReadAt?: string | null;
   group?: GroupLite;
 };
 
@@ -110,6 +111,7 @@ function MessagesInner() {
         unread: c.id === activeDm ? 0 : unread,
         other: o?.profile ?? null,
         otherReadAt: o?.last_read_at ?? null,
+        myReadAt: me?.last_read_at ?? null,
       });
     }
     type GM = { group_id: string; content: string; image_url: string | null; sender_id: string; created_at: string; sender: { full_name: string; username: string } | null };
@@ -289,37 +291,32 @@ function MessagesInner() {
 /* ---------------- Discussion privée ---------------- */
 function DmThread({ convId, row, uid, online, onActivity }: { convId: string; row?: Row; uid: string; online: boolean; onActivity: () => void }) {
   const toast = useToast();
+  const { profile } = useAuth();
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [typing, setTyping] = useState(false);
+  const [typingUnavailable, setTypingUnavailable] = useState(false);
   const [other, setOther] = useState<Profile | null>(row?.other ?? null);
   const [otherReadAt, setOtherReadAt] = useState<string | null>(row?.otherReadAt ?? null);
+  const [myReadAt, setMyReadAt] = useState<string | null>(row?.myReadAt ?? null);
+  const initialReadAt = useRef({ mine: row?.myReadAt ?? null, other: row?.otherReadAt ?? null });
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [replyTargets, setReplyTargets] = useState<Record<string, Message | null>>({});
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [showRecent, setShowRecent] = useState(false);
   const [viewer, setViewer] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
-  const chRef = useRef<ReturnType<ReturnType<typeof sb>["channel"]> | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const typingChRef = useRef<ReturnType<ReturnType<typeof sb>["channel"]> | null>(null);
+  const typingReady = useRef(false);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingSent = useRef(0);
+  const nearBottom = useRef(true);
 
   useEffect(() => {
-    if (row?.other) setOther(row.other);
     if (row?.otherReadAt) setOtherReadAt(row.otherReadAt);
-  }, [row?.other, row?.otherReadAt]);
-
-  // Si on arrive directement sur une conversation sans message, on charge l'autre personne
-  useEffect(() => {
-    if (other) return;
-    sb()
-      .from("conversation_members")
-      .select("user_id, last_read_at, profile:profiles(*)")
-      .eq("conversation_id", convId)
-      .then(({ data }) => {
-        const o = ((data || []) as unknown as { user_id: string; last_read_at: string; profile: Profile }[]).find((m) => m.user_id !== uid);
-        if (o) {
-          setOther(o.profile);
-          setOtherReadAt(o.last_read_at);
-        }
-      });
-  }, [convId, uid, other]);
+  }, [row?.otherReadAt]);
 
   const markRead = useCallback(() => {
     sb().from("conversation_members").update({ last_read_at: new Date().toISOString() }).eq("conversation_id", convId).eq("user_id", uid).then(() => onActivity());
@@ -328,63 +325,100 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
 
   useEffect(() => {
     let alive = true;
-    sb()
-      .from("messages")
-      .select("*")
-      .eq("conversation_id", convId)
-      .order("created_at", { ascending: true })
-      .limit(500)
-      .then(({ data }) => {
-        if (!alive) return;
-        setMsgs((data as Message[]) || []);
-        setLoading(false);
-      });
-    markRead();
-    const ch = sb()
-      .channel(`thread-${convId}`, { config: { broadcast: { self: false } } })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${convId}` }, (p) => {
-        const m = p.new as Message;
-        setMsgs((all) => (all.some((x) => x.id === m.id) ? all : [...all, m]));
-        if (m.sender_id !== uid) {
-          setTyping(false);
-          markRead();
-        }
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "conversation_members", filter: `conversation_id=eq.${convId}` }, (p) => {
-        const r = p.new as { user_id: string; last_read_at: string };
-        if (r.user_id !== uid) setOtherReadAt(r.last_read_at);
-      })
-      .on("broadcast", { event: "typing" }, (p) => {
-        if (p.payload?.uid === uid) return;
-        setTyping(true);
-        if (typingTimer.current) clearTimeout(typingTimer.current);
-        typingTimer.current = setTimeout(() => setTyping(false), 3000);
-      })
-      .subscribe();
-    chRef.current = ch;
+    let dbChannel: ReturnType<ReturnType<typeof sb>["channel"]> | null = null;
+    let typingChannel: ReturnType<ReturnType<typeof sb>["channel"]> | null = null;
+    const initialize = async () => {
+      // Confirm membership before opening a conversation-scoped private typing channel.
+      const { data: membership } = await sb().from("conversation_members")
+        .select("user_id,last_read_at,profile:profiles(*)").eq("conversation_id", convId);
+      if (!alive) return;
+      const participants = (membership || []) as unknown as { user_id: string; last_read_at: string; profile: Profile }[];
+      const self = participants.find((member) => member.user_id === uid);
+      if (!self) { setLoading(false); return; }
+      const recipient = participants.find((member) => member.user_id !== uid);
+      if (recipient?.profile) setOther(recipient.profile);
+      setOtherReadAt(recipient?.last_read_at ?? initialReadAt.current.other);
+      setMyReadAt((current) => current ?? self.last_read_at ?? initialReadAt.current.mine);
+
+      const { data } = await sb().from("messages").select("*").eq("conversation_id", convId).order("created_at", { ascending: false }).limit(500);
+      if (!alive) return;
+      setMsgs(((data as Message[]) || []).reverse());
+      setLoading(false);
+      markRead();
+
+      dbChannel = sb().channel(`thread-${convId}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${convId}` }, (p) => {
+          const m = p.new as Message;
+          setMsgs((all) => (all.some((x) => x.id === m.id) ? all : [...all, m]));
+          if (m.sender_id !== uid) { setTyping(false); markRead(); }
+        })
+        .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages", filter: `conversation_id=eq.${convId}` }, (p) => {
+          const id = (p.old as { id?: string }).id;
+          if (id) {
+            setMsgs((all) => all.filter((message) => message.id !== id));
+            setReplyTargets((targets) => ({ ...targets, [id]: null }));
+          }
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "conversation_members", filter: `conversation_id=eq.${convId}` }, (p) => {
+          const r = p.new as { user_id: string; last_read_at: string };
+          if (r.user_id !== uid) setOtherReadAt(r.last_read_at);
+        })
+        .subscribe();
+      if (recipient) {
+        typingChannel = sb().channel(`dm-typing:${convId}`, { config: { private: true, broadcast: { self: false } } })
+          .on("broadcast", { event: "typing" }, (p) => {
+            if (p.payload?.uid !== recipient.user_id) return;
+            setTyping(true);
+            if (typingTimer.current) clearTimeout(typingTimer.current);
+            typingTimer.current = setTimeout(() => setTyping(false), 3500);
+          })
+          .subscribe((status) => {
+            typingReady.current = status === "SUBSCRIBED";
+            if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setTypingUnavailable(true);
+            if (status === "SUBSCRIBED") setTypingUnavailable(false);
+          });
+        typingChRef.current = typingChannel;
+      }
+    };
+    void initialize();
     return () => {
       alive = false;
-      sb().removeChannel(ch);
+      typingReady.current = false;
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+      if (dbChannel) sb().removeChannel(dbChannel);
+      if (typingChannel) sb().removeChannel(typingChannel);
+      typingChRef.current = null;
     };
   }, [convId, uid, markRead]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: msgs.length > 40 ? "auto" : "smooth", block: "end" });
+    if (nearBottom.current) endRef.current?.scrollIntoView({ behavior: msgs.length > 40 ? "auto" : "smooth", block: "end" });
+    else if (msgs.length) setShowRecent(true);
   }, [msgs.length, typing]);
 
+  useEffect(() => {
+    const ids = [...new Set<string>(msgs.map((message) => message.reply_to_id).filter((id): id is string => !!id))]
+      .filter((id) => !msgs.some((message) => message.id === id) && !Object.prototype.hasOwnProperty.call(replyTargets, id)).slice(0, 100);
+    if (!ids.length) return;
+    void sb().from("messages").select("*").eq("conversation_id", convId).in("id", ids).then(({ data }) => {
+      const found = (data || []) as Message[];
+      setReplyTargets((targets) => ({ ...targets, ...Object.fromEntries(ids.map((id) => [id, found.find((message) => message.id === id) || null])) }));
+    });
+  }, [msgs, convId, replyTargets]);
+
   const sendTyping = () => {
-    if (Date.now() - lastTypingSent.current > 1500) {
+    if (typingReady.current && Date.now() - lastTypingSent.current > 1500) {
       lastTypingSent.current = Date.now();
-      chRef.current?.send({ type: "broadcast", event: "typing", payload: { uid } });
+      typingChRef.current?.send({ type: "broadcast", event: "typing", payload: { uid } });
     }
   };
 
-  const send = async (content: string, file: File | null) => {
-    const temp: Message = { id: `tmp-${Date.now()}`, conversation_id: convId, sender_id: uid, content, image_url: file ? URL.createObjectURL(file) : null, created_at: new Date().toISOString() };
+  const send = async (content: string, file: File | null, replyToId?: string | null) => {
+    const temp: Message = { id: `tmp-${Date.now()}`, conversation_id: convId, sender_id: uid, content, image_url: file ? URL.createObjectURL(file) : null, created_at: new Date().toISOString(), reply_to_id: replyToId || null };
     setMsgs((all) => [...all, temp]);
     try {
       const image_url = file ? await uploadChatImage(uid, file) : null;
-      const { data, error } = await sb().from("messages").insert({ conversation_id: convId, sender_id: uid, content, image_url }).select().single();
+      const { data, error } = await sb().from("messages").insert({ conversation_id: convId, sender_id: uid, content, image_url, reply_to_id: replyToId || null }).select().single();
       if (error) throw error;
       setMsgs((all) => (all.some((m) => m.id === data.id) ? all.filter((m) => m.id !== temp.id) : all.map((m) => (m.id === temp.id ? (data as Message) : m))));
       onActivity();
@@ -395,6 +429,45 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
       return false;
     }
   };
+
+  const resolveReply = (id?: string | null): ChatReply | null => {
+    if (!id) return null;
+    const target = msgs.find((message) => message.id === id) || replyTargets[id];
+    if (!target) return null;
+    return { id: target.id, author: target.sender_id === uid ? displayName(profile) : displayName(other), content: target.content, image_url: target.image_url };
+  };
+  const startReply = (message: Message) => {
+    if (message.id.startsWith("tmp-")) return toast("Attends que le message soit enregistré avant d’y répondre.", "info");
+    setReplyTo(message);
+  };
+  const jumpToMessage = async (id: string) => {
+    const jump = () => {
+      const element = messageRefs.current[id];
+      if (!element) return false;
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightedId(id);
+      setTimeout(() => setHighlightedId((current) => current === id ? null : current), 1600);
+      return true;
+    };
+    if (jump()) return;
+    const { data: target } = await sb().from("messages").select("*").eq("conversation_id", convId).eq("id", id).maybeSingle();
+    if (!target) return toast("Ce message a été supprimé ou n’est plus accessible.", "info");
+    const typed = target as Message;
+    const [{ data: before }, { data: after }] = await Promise.all([
+      sb().from("messages").select("*").eq("conversation_id", convId).lt("created_at", typed.created_at).order("created_at", { ascending: false }).limit(8),
+      sb().from("messages").select("*").eq("conversation_id", convId).gt("created_at", typed.created_at).order("created_at", { ascending: true }).limit(8),
+    ]);
+    const context = [...((before || []) as Message[]).reverse(), typed, ...((after || []) as Message[])];
+    setMsgs((all) => [...new Map([...all, ...context].map((message) => [message.id, message])).values()].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at)));
+    setTimeout(jump, 80);
+  };
+  const handleThreadScroll = () => {
+    const element = scrollRef.current;
+    if (!element) return;
+    nearBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 110;
+    setShowRecent(!nearBottom.current);
+  };
+  const firstUnreadId = myReadAt ? msgs.find((message) => message.sender_id !== uid && new Date(message.created_at) > new Date(myReadAt))?.id : null;
 
   const readAt = otherReadAt ? new Date(otherReadAt) : null;
 
@@ -414,7 +487,8 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
           </Link>
         )}
       </div>
-      <div className="flex-1 overflow-y-auto scroll-thin px-2 sm:px-[6%] py-4 flex flex-col min-h-0" style={CHAT_BG}>
+      <div ref={scrollRef} onScroll={handleThreadScroll} className="relative flex-1 overflow-y-auto scroll-thin px-2 sm:px-[6%] py-4 flex flex-col min-h-0" style={CHAT_BG}>
+        {typingUnavailable && <p className="self-center text-[11px] text-muted bg-surface/90 border border-line rounded-full px-3 py-1 mb-2">L’indicateur de saisie nécessite les autorisations Broadcast privées côté Supabase.</p>}
         {loading ? (
           <div className="flex justify-center py-10"><Spinner /></div>
         ) : msgs.length === 0 ? (
@@ -434,10 +508,11 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
             const groupedBottom = sameDay(m, next) && next!.sender_id === m.sender_id && +new Date(next!.created_at) - +new Date(m.created_at) < 5 * 60000;
             const delivery = m.id.startsWith("tmp-") ? "pending" : readAt && readAt >= new Date(m.created_at) ? "read" : "sent";
             return (
-              <div key={m.id} className="flex flex-col">
+              <div key={m.id} ref={(element) => { messageRefs.current[m.id] = element; }} className={cx("flex flex-col rounded-2xl transition-colors", highlightedId === m.id && "bg-cobalt/10 ring-2 ring-cobalt/30")}>
                 {newDay && <DaySeparator iso={m.created_at} />}
+                {firstUnreadId === m.id && <div className="self-center my-3 rounded-full bg-cobalt-soft px-3 py-1 text-[11px] font-bold text-cobalt">Nouveaux messages</div>}
                 <div className={cx("flex", mine ? "justify-end" : "justify-start", groupedTop ? "mt-[3px]" : "mt-2.5")}>
-                  <Bubble mine={mine} text={m.content} image={m.image_url} time={hhmm(m.created_at)} delivery={mine ? delivery : undefined} groupedTop={groupedTop} groupedBottom={groupedBottom} onImage={setViewer} />
+                  <SwipeReply onReply={() => startReply(m)}><Bubble mine={mine} text={m.content} image={m.image_url} time={hhmm(m.created_at)} delivery={mine ? delivery : undefined} groupedTop={groupedTop} groupedBottom={groupedBottom} onImage={setViewer} onReply={() => startReply(m)} hasReply={!!m.reply_to_id} reply={resolveReply(m.reply_to_id)} onJumpReply={jumpToMessage} /></SwipeReply>
                 </div>
               </div>
             );
@@ -453,8 +528,9 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
           </div>
         )}
         <div ref={endRef} />
+        {showRecent && <button type="button" onClick={() => { nearBottom.current = true; setShowRecent(false); endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }} className="sticky bottom-3 self-end z-10 btn btn-soft !rounded-full !px-3 !py-2 shadow-[var(--shadow-pop)]"><ArrowDown size={16} /> Messages récents</button>}
       </div>
-      <ChatComposer placeholder="Écrire un message" onSend={send} onTyping={sendTyping} />
+      <ChatComposer placeholder="Écrire un message" onSend={send} onTyping={sendTyping} reply={replyTo ? { id: replyTo.id, author: replyTo.sender_id === uid ? displayName(profile) : displayName(other), content: replyTo.content, image_url: replyTo.image_url } : null} onCancelReply={() => setReplyTo(null)} />
       <ImageViewer src={viewer} onClose={() => setViewer(null)} />
     </div>
   );

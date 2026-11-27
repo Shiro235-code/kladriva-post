@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Check, CheckCheck, Clock3, ImagePlus, SendHorizontal, Smile, X } from "lucide-react";
+import { Check, CheckCheck, Clock3, ImagePlus, MoreHorizontal, Reply, SendHorizontal, Smile, X } from "lucide-react";
 import { cx, groupColor, groupGradient, groupIcon } from "@/lib/utils";
 import { compressImage } from "@/lib/media";
 import { sb } from "@/lib/supabase";
@@ -76,11 +76,15 @@ export function ChatComposer({
   onSend,
   onTyping,
   disabled,
+  reply,
+  onCancelReply,
 }: {
   placeholder: string;
-  onSend: (text: string, image: File | null) => Promise<boolean>;
+  onSend: (text: string, image: File | null, replyToId?: string | null) => Promise<boolean>;
   onTyping?: () => void;
   disabled?: boolean;
+  reply?: ChatReply | null;
+  onCancelReply?: () => void;
 }) {
   const [text, setText] = useState("");
   const [image, setImage] = useState<{ file: File; url: string } | null>(null);
@@ -105,11 +109,11 @@ export function ChatComposer({
     setBusy(true);
     setText("");
     setImage(null);
-    const ok = await onSend(t, img);
+    const ok = await onSend(t, img, reply?.id ?? null);
     if (!ok) {
       setText(t);
       if (img) setImage({ file: img, url: URL.createObjectURL(img) });
-    }
+    } else onCancelReply?.();
     setBusy(false);
     areaRef.current?.focus();
   };
@@ -129,6 +133,11 @@ export function ChatComposer({
 
   return (
     <div className="border-t border-line bg-surface shrink-0 px-2 sm:px-4 pt-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
+      {reply && <div className="mb-2 flex items-center gap-3 rounded-2xl border-l-[3px] border-cobalt bg-cobalt-soft/60 px-3 py-2.5">
+        <Reply size={16} className="text-cobalt shrink-0" />
+        <div className="min-w-0 flex-1"><p className="text-xs font-bold text-cobalt">Réponse à {reply.author || "un message"}</p><p className="text-sm text-ink-2 truncate">{reply.content || (reply.image_url ? "Image" : "Message")}</p></div>
+        <button type="button" onClick={onCancelReply} className="icon-btn !w-8 !h-8 shrink-0" aria-label="Annuler la réponse"><X size={16} /></button>
+      </div>}
       {image && (
         <div className="relative inline-block mb-2 ml-1">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -214,6 +223,22 @@ export function ChatComposer({
 
 /* ---------------- Bulle de message ---------------- */
 export type Delivery = "pending" | "sent" | "read";
+export type ChatReply = { id: string; author: string; content: string; image_url: string | null };
+
+export function SwipeReply({ children, onReply }: { children: React.ReactNode; onReply: () => void }) {
+  const start = useRef<{ x: number; y: number } | null>(null);
+  return <div
+    onTouchStart={(event) => { const touch = event.touches[0]; start.current = { x: touch.clientX, y: touch.clientY }; }}
+    onTouchEnd={(event) => {
+      if (!start.current) return;
+      const touch = event.changedTouches[0];
+      const dx = touch.clientX - start.current.x;
+      const dy = touch.clientY - start.current.y;
+      if (dx > 64 && Math.abs(dx) > Math.abs(dy) * 1.35) onReply();
+      start.current = null;
+    }}
+  >{children}</div>;
+}
 
 export function Bubble({
   mine,
@@ -226,6 +251,11 @@ export function Bubble({
   groupedTop,
   groupedBottom,
   onImage,
+  reply,
+  hasReply,
+  onJumpReply,
+  onReply,
+  readCount,
 }: {
   mine: boolean;
   text: string;
@@ -237,20 +267,49 @@ export function Bubble({
   groupedTop?: boolean;
   groupedBottom?: boolean;
   onImage?: (src: string) => void;
+  reply?: ChatReply | null;
+  hasReply?: boolean;
+  onJumpReply?: (id: string) => void;
+  onReply?: () => void;
+  readCount?: number;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: MouseEvent) => { if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false); };
+    const esc = (event: KeyboardEvent) => { if (event.key === "Escape") setMenuOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+  }, [menuOpen]);
+
+  const menu = onReply ? <div ref={menuRef} className={cx("absolute top-0 z-20", mine ? "-left-10" : "-right-10")}>
+    <button type="button" onClick={() => setMenuOpen((open) => !open)} className="icon-btn !w-8 !h-8 bg-surface/90 shadow-sm opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100" aria-label="Actions du message" aria-haspopup="menu" aria-expanded={menuOpen}><MoreHorizontal size={17} /></button>
+    {menuOpen && <div role="menu" className="absolute top-8 left-0 min-w-36 rounded-xl border border-line bg-surface p-1 shadow-[var(--shadow-pop)]">
+      <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onReply(); }} className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-left hover:bg-surface-2"><Reply size={15} />Répondre</button>
+    </div>}
+  </div> : null;
+  const quoted = hasReply ? <button type="button" disabled={!reply?.id} onClick={() => reply?.id && onJumpReply?.(reply.id)} className={cx("w-full mb-1.5 rounded-xl border-l-[3px] px-2.5 py-1.5 text-left", mine ? "bg-white/10 border-white/75 text-white" : "bg-cobalt-soft/65 border-cobalt text-ink", !reply?.id && "cursor-default")} aria-label={reply?.id ? "Afficher le message cité" : "Message cité indisponible"}>
+    <span className={cx("block text-[11px] font-bold truncate", mine ? "text-white" : "text-cobalt")}>{reply?.author || "Message indisponible"}</span>
+    <span className="block text-xs truncate opacity-85">{reply ? reply.content || (reply.image_url ? "Image" : "Message") : "Ce message a été supprimé ou n’est pas accessible."}</span>
+  </button> : null;
+
   const onlyEmoji = !image && /^(\p{Extended_Pictographic}|\p{Emoji_Component}|\s){1,8}$/u.test(text.trim()) && !/^[\d#*\s]+$/.test(text.trim());
   const meta = (
     <span className={cx("inline-flex items-center gap-1 text-[11px] leading-none whitespace-nowrap", mine && !onlyEmoji ? "text-white/75" : "text-muted")}>
       {time}
-      {mine && delivery === "pending" && <Clock3 size={12} />}
-      {mine && delivery === "sent" && <Check size={14} />}
-      {mine && delivery === "read" && <CheckCheck size={15} className={onlyEmoji ? "text-cobalt" : "text-[#9be7ff]"} />}
+      {mine && delivery === "pending" && <Clock3 size={12} aria-label="En cours d’envoi" title="En cours d’envoi" />}
+      {mine && delivery === "sent" && !(readCount && readCount > 0) && <Check size={14} aria-label="Enregistré sur le serveur" title="Enregistré sur le serveur" />}
+      {mine && delivery === "sent" && readCount !== undefined && readCount > 0 && <><CheckCheck size={15} className={onlyEmoji ? "text-cobalt" : "text-[#9be7ff]"} aria-label={`Lu par ${readCount}`} title={`Lu par ${readCount}`} /><span>Lu par {readCount}</span></>}
+      {mine && delivery === "read" && <CheckCheck size={15} className={onlyEmoji ? "text-cobalt" : "text-[#9be7ff]"} aria-label="Lu par le destinataire" title="Lu par le destinataire" />}
     </span>
   );
 
   if (onlyEmoji) {
     return (
-      <div className={cx("flex flex-col", mine ? "items-end" : "items-start")}>
+      <div className={cx("relative group flex flex-col", mine ? "items-end" : "items-start")}>
+        {menu}
         {name && !groupedTop && <span className="text-[12.5px] font-bold mb-0.5 px-1" style={{ color: nameTone }}>{name}</span>}
         <span className="text-[44px] leading-none px-1">{text}</span>
         <span className="px-1 mt-1">{meta}</span>
@@ -260,8 +319,9 @@ export function Bubble({
 
   return (
     <div
+      onContextMenu={(event) => { if (onReply) { event.preventDefault(); setMenuOpen(true); } }}
       className={cx(
-        "max-w-[min(78%,560px)] shadow-[0_1px_0.5px_rgba(11,20,26,0.08)]",
+        "relative group max-w-[min(78%,560px)] shadow-[0_1px_0.5px_rgba(11,20,26,0.08)]",
         mine ? "bg-cobalt text-white" : "bg-surface text-ink border border-line",
         "rounded-[18px]",
         mine ? groupedTop && "rounded-tr-[6px]" : groupedTop && "rounded-tl-[6px]",
@@ -270,11 +330,13 @@ export function Bubble({
         delivery === "pending" && "opacity-70",
       )}
     >
+      {menu}
       {name && !groupedTop && (
         <p className={cx("text-[12.5px] font-bold", image ? "px-2 pt-1 pb-1" : "")} style={{ color: nameTone }}>
           {name}
         </p>
       )}
+      {quoted}
       {image && (
         <button type="button" onClick={() => onImage?.(image)} className="block" aria-label="Agrandir l'image">
           {/* eslint-disable-next-line @next/next/no-img-element */}
