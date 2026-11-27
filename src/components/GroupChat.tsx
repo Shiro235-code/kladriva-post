@@ -227,9 +227,16 @@ export function GroupChat({
       }
       if (voice && (!messageId || !audioPath)) throw new Error("Impossible de préparer l’identifiant du message vocal. Réessaie.");
       const image_url = voice ? null : file ? await uploadChatImage(uid, file) : null;
-      const insert = voice && messageId
-        ? { id: messageId, group_id: group.id, sender_id: uid, content: "", image_url: null, audio_path: audioPath, audio_duration_ms: voice.durationMs, reply_to_id: replyToId || null }
-        : { group_id: group.id, sender_id: uid, content, image_url, reply_to_id: replyToId || null };
+const insert = {
+  id: messageId || crypto.randomUUID(),
+  group_id: group.id,
+  sender_id: uid,
+  content: voice ? "Message vocal" : content,
+  image_url: voice ? null : image_url,
+  audio_path: voice ? audioPath : null,
+  audio_duration_ms: voice ? voice.durationMs : null,
+  reply_to_id: replyToId || null,
+};
       const { data, error } = await sb().from("group_messages").insert(insert).select().single();
       if (error) throw new Error(error.message.includes("row-level") ? "Tu ne fais plus partie de ce groupe." : "Message non envoyé. Vérifie ta connexion.");
       confirmMessage(data as GroupMessage);
