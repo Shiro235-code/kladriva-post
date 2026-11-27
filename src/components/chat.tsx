@@ -5,6 +5,7 @@ import { Check, CheckCheck, Clock3, ImagePlus, MoreHorizontal, Reply, SendHorizo
 import { cx, groupColor, groupGradient, groupIcon } from "@/lib/utils";
 import { compressImage } from "@/lib/media";
 import { sb } from "@/lib/supabase";
+import { createVoiceMessageId, VoiceMessagePlayer, VoiceRecorder, type VoicePayload } from "./VoiceMessage";
 
 /* ---------------- Avatar de groupe : rond, comme WhatsApp ---------------- */
 export function GroupAvatar({
@@ -80,7 +81,7 @@ export function ChatComposer({
   onCancelReply,
 }: {
   placeholder: string;
-  onSend: (text: string, image: File | null, replyToId?: string | null) => Promise<boolean>;
+  onSend: (text: string, image: File | null, replyToId?: string | null, voice?: VoicePayload | null) => Promise<boolean>;
   onTyping?: () => void;
   disabled?: boolean;
   reply?: ChatReply | null;
@@ -90,8 +91,14 @@ export function ChatComposer({
   const [image, setImage] = useState<{ file: File; url: string } | null>(null);
   const [emoji, setEmoji] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [voice, setVoice] = useState<VoicePayload | null>(null);
+  const [recordingVoice, setRecordingVoice] = useState(false);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const voiceMessageId = useRef<string | null>(null);
+  const submitting = useRef(false);
+
+  useEffect(() => { if (!voice) voiceMessageId.current = null; }, [voice]);
 
   useEffect(() => {
     const el = areaRef.current;
@@ -100,21 +107,25 @@ export function ChatComposer({
     el.style.height = Math.min(168, el.scrollHeight) + "px";
   }, [text]);
 
-  const canSend = (text.trim().length > 0 || !!image) && !busy && !disabled;
+  const canSend = (text.trim().length > 0 || !!image || !!voice) && !recordingVoice && !busy && !disabled;
 
   const submit = async () => {
-    if (!canSend) return;
-    const t = text.trim();
-    const img = image?.file ?? null;
+    if (!canSend || submitting.current) return;
+    submitting.current = true;
+    const t = voice ? "" : text.trim();
+    const img = voice ? null : image?.file ?? null;
     setBusy(true);
     setText("");
     setImage(null);
-    const ok = await onSend(t, img, reply?.id ?? null);
+    const outgoingVoice = voice ? { ...voice, messageId: voiceMessageId.current || (voiceMessageId.current = createVoiceMessageId()) } : null;
+    let ok = false;
+    try { ok = await onSend(t, img, reply?.id ?? null, outgoingVoice); } catch { ok = false; }
     if (!ok) {
       setText(t);
       if (img) setImage({ file: img, url: URL.createObjectURL(img) });
-    } else onCancelReply?.();
+    } else { setVoice(null); onCancelReply?.(); }
     setBusy(false);
+    submitting.current = false;
     areaRef.current?.focus();
   };
 
@@ -135,7 +146,7 @@ export function ChatComposer({
     <div className="border-t border-line bg-surface shrink-0 px-2 sm:px-4 pt-2.5 pb-[max(10px,env(safe-area-inset-bottom))]">
       {reply && <div className="mb-2 flex items-center gap-3 rounded-2xl border-l-[3px] border-cobalt bg-cobalt-soft/60 px-3 py-2.5">
         <Reply size={16} className="text-cobalt shrink-0" />
-        <div className="min-w-0 flex-1"><p className="text-xs font-bold text-cobalt">Réponse à {reply.author || "un message"}</p><p className="text-sm text-ink-2 truncate">{reply.content || (reply.image_url ? "Image" : "Message")}</p></div>
+        <div className="min-w-0 flex-1"><p className="text-xs font-bold text-cobalt">Réponse à {reply.author || "un message"}</p><p className="text-sm text-ink-2 truncate">{reply.audio_path ? "Message vocal" : reply.content || (reply.image_url ? "Image" : "Message")}</p></div>
         <button type="button" onClick={onCancelReply} className="icon-btn !w-8 !h-8 shrink-0" aria-label="Annuler la réponse"><X size={16} /></button>
       </div>}
       {image && (
@@ -154,56 +165,29 @@ export function ChatComposer({
         }}
         className="flex items-end gap-1.5 sm:gap-2"
       >
-        <div className="relative flex items-center">
-          <button type="button" onClick={() => setEmoji((v) => !v)} className="icon-btn !w-11 !h-11" aria-label="Emojis" aria-expanded={emoji}>
-            <Smile size={23} />
-          </button>
-          {emoji && <EmojiPicker onPick={insertEmoji} onClose={() => setEmoji(false)} />}
-        </div>
-        <button type="button" onClick={() => fileRef.current?.click()} className="icon-btn !w-11 !h-11" aria-label="Joindre une image">
-          <ImagePlus size={22} />
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={(e) => {
+        {!voice && !recordingVoice ? <>
+          <div className="relative flex items-center">
+            <button type="button" onClick={() => setEmoji((v) => !v)} className="icon-btn !w-11 !h-11" aria-label="Emojis" aria-expanded={emoji}><Smile size={23} /></button>
+            {emoji && <EmojiPicker onPick={insertEmoji} onClose={() => setEmoji(false)} />}
+          </div>
+          <button type="button" onClick={() => fileRef.current?.click()} className="icon-btn !w-11 !h-11" aria-label="Joindre une image"><ImagePlus size={22} /></button>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
             if (!f || !f.type.startsWith("image/")) return;
             setImage({ file: f, url: URL.createObjectURL(f) });
             areaRef.current?.focus();
-          }}
-        />
-        <div className="flex-1 min-w-0 bg-surface-2 border border-line rounded-[24px] px-4 py-2.5 focus-within:border-cobalt focus-within:bg-surface transition">
-          <textarea
-            ref={areaRef}
-            value={text}
-            rows={1}
-            onChange={(e) => {
-              setText(e.target.value);
-              onTyping?.();
-            }}
-            onPaste={(e) => {
+          }} />
+          <div className="flex-1 min-w-0 bg-surface-2 border border-line rounded-[24px] px-4 py-2.5 focus-within:border-cobalt focus-within:bg-surface transition">
+            <textarea ref={areaRef} value={text} rows={1} onChange={(e) => { setText(e.target.value); onTyping?.(); }} onPaste={(e) => {
               const f = e.clipboardData.files?.[0];
-              if (f?.type.startsWith("image/")) {
-                e.preventDefault();
-                setImage({ file: f, url: URL.createObjectURL(f) });
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            placeholder={placeholder}
-            maxLength={4000}
-            className="w-full bg-transparent outline-none focus-visible:outline-none resize-none text-[15.5px] leading-[1.4] block max-h-[168px] scroll-thin"
-            aria-label="Message"
-          />
-        </div>
+              if (f?.type.startsWith("image/")) { e.preventDefault(); setImage({ file: f, url: URL.createObjectURL(f) }); }
+            }} onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
+            }} placeholder={placeholder} maxLength={4000} className="w-full bg-transparent outline-none focus-visible:outline-none resize-none text-[15.5px] leading-[1.4] block max-h-[168px] scroll-thin" aria-label="Message" />
+          </div>
+          <VoiceRecorder draft={voice} onDraft={setVoice} disabled={disabled || busy || !!text.trim() || !!image} onRecordingChange={setRecordingVoice} />
+        </> : <VoiceRecorder draft={voice} onDraft={setVoice} disabled={disabled || busy} onRecordingChange={setRecordingVoice} className="min-w-0 flex-1" />}
         <button
           type="submit"
           disabled={!canSend}
@@ -211,8 +195,8 @@ export function ChatComposer({
             "w-12 h-12 shrink-0 rounded-full grid place-items-center transition",
             canSend ? "bg-cobalt text-white hover:brightness-110 active:scale-95" : "bg-surface-2 text-muted border border-line",
           )}
-          aria-label="Envoyer le message"
-          title="Envoyer (Entrée)"
+          aria-label={voice ? "Envoyer le message vocal" : "Envoyer le message"}
+          title={voice ? "Envoyer le vocal" : "Envoyer (Entrée)"}
         >
           {busy ? <span className="w-5 h-5 rounded-full border-2 border-white/40 border-t-white animate-spin" /> : <SendHorizontal size={21} strokeWidth={2.2} className="translate-x-[1px]" />}
         </button>
@@ -223,7 +207,7 @@ export function ChatComposer({
 
 /* ---------------- Bulle de message ---------------- */
 export type Delivery = "pending" | "sent" | "read";
-export type ChatReply = { id: string; author: string; content: string; image_url: string | null };
+export type ChatReply = { id: string; author: string; content: string; image_url: string | null; audio_path?: string | null; audio_duration_ms?: number | null };
 
 export function SwipeReply({ children, onReply }: { children: React.ReactNode; onReply: () => void }) {
   const start = useRef<{ x: number; y: number } | null>(null);
@@ -256,6 +240,8 @@ export function Bubble({
   onJumpReply,
   onReply,
   readCount,
+  audioPath,
+  audioDurationMs,
 }: {
   mine: boolean;
   text: string;
@@ -272,6 +258,8 @@ export function Bubble({
   onJumpReply?: (id: string) => void;
   onReply?: () => void;
   readCount?: number;
+  audioPath?: string | null;
+  audioDurationMs?: number | null;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -292,10 +280,10 @@ export function Bubble({
   </div> : null;
   const quoted = hasReply ? <button type="button" disabled={!reply?.id} onClick={() => reply?.id && onJumpReply?.(reply.id)} className={cx("w-full mb-1.5 rounded-xl border-l-[3px] px-2.5 py-1.5 text-left", mine ? "bg-white/10 border-white/75 text-white" : "bg-cobalt-soft/65 border-cobalt text-ink", !reply?.id && "cursor-default")} aria-label={reply?.id ? "Afficher le message cité" : "Message cité indisponible"}>
     <span className={cx("block text-[11px] font-bold truncate", mine ? "text-white" : "text-cobalt")}>{reply?.author || "Message indisponible"}</span>
-    <span className="block text-xs truncate opacity-85">{reply ? reply.content || (reply.image_url ? "Image" : "Message") : "Ce message a été supprimé ou n’est pas accessible."}</span>
+    <span className="block text-xs truncate opacity-85">{reply ? reply.audio_path ? "Message vocal" : reply.content || (reply.image_url ? "Image" : "Message") : "Ce message a été supprimé ou n’est pas accessible."}</span>
   </button> : null;
 
-  const onlyEmoji = !image && /^(\p{Extended_Pictographic}|\p{Emoji_Component}|\s){1,8}$/u.test(text.trim()) && !/^[\d#*\s]+$/.test(text.trim());
+  const onlyEmoji = !image && !audioPath && /^(\p{Extended_Pictographic}|\p{Emoji_Component}|\s){1,8}$/u.test(text.trim()) && !/^[\d#*\s]+$/.test(text.trim());
   const meta = (
     <span className={cx("inline-flex items-center gap-1 text-[11px] leading-none whitespace-nowrap", mine && !onlyEmoji ? "text-white/75" : "text-muted")}>
       {time}
@@ -326,7 +314,7 @@ export function Bubble({
         "rounded-[18px]",
         mine ? groupedTop && "rounded-tr-[6px]" : groupedTop && "rounded-tl-[6px]",
         mine ? groupedBottom && "rounded-br-[6px]" : groupedBottom && "rounded-bl-[6px]",
-        image ? "p-1" : "px-3 pt-1.5 pb-1.5",
+        image || audioPath ? "p-2" : "px-3 pt-1.5 pb-1.5",
         delivery === "pending" && "opacity-70",
       )}
     >
@@ -337,6 +325,7 @@ export function Bubble({
         </p>
       )}
       {quoted}
+      {audioPath && <VoiceMessagePlayer path={audioPath} durationMs={audioDurationMs ?? null} />}
       {image && (
         <button type="button" onClick={() => onImage?.(image)} className="block" aria-label="Agrandir l'image">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -348,6 +337,8 @@ export function Bubble({
           {text}
           <span className="float-right ml-2.5 mt-[7px]">{meta}</span>
         </p>
+      ) : audioPath ? (
+        <div className="flex justify-end px-1 pt-0.5">{meta}</div>
       ) : (
         <div className="flex justify-end px-2 pb-1 pt-1">{meta}</div>
       )}

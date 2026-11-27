@@ -11,6 +11,7 @@ import { useActivity, useToast } from "./Providers";
 import { Avatar, Spinner } from "./ui";
 import { Bubble, CHAT_BG, ChatComposer, DaySeparator, GroupAvatar, ImageViewer, hhmm, uploadChatImage, SwipeReply, type ChatReply } from "./chat";
 import { GroupInfo } from "./GroupInfo";
+import { cleanupUnpublishedVoice, queueUnpublishedVoice, uploadVoice, voiceObjectPath, type VoicePayload } from "./VoiceMessage";
 
 /**
  * Discussion de groupe façon WhatsApp : nom coloré de l'expéditeur, bulles groupées,
@@ -56,6 +57,7 @@ export function GroupChat({
   const nearBottom = useRef(true);
 
   useEffect(() => setGroup(initial), [initial]);
+  useEffect(() => { if (uid) void cleanupUnpublishedVoice(uid); }, [uid]);
 
   const byId = (id: string) => members.find((m) => m.id === id);
   const me = members.find((m) => m.id === uid);
@@ -186,26 +188,48 @@ export function GroupChat({
     }
   };
 
-  const send = async (content: string, file: File | null, replyToId?: string | null): Promise<boolean> => {
+  const send = async (content: string, file: File | null, replyToId?: string | null, voice?: VoicePayload | null): Promise<boolean> => {
     if (!uid) return false;
+    const messageId = voice?.messageId || null;
+    const audioPath = voice && messageId ? voiceObjectPath("group", group.id, uid, messageId, voice.extension) : null;
     const temp: GroupMessage = {
-      id: `tmp-${Date.now()}`,
+      id: messageId || `tmp-${Date.now()}`,
       group_id: group.id,
       sender_id: uid,
-      content,
-      image_url: file ? URL.createObjectURL(file) : null,
+      content: voice ? "Message vocal…" : content,
+      image_url: voice ? null : file ? URL.createObjectURL(file) : null,
       created_at: new Date().toISOString(),
       reply_to_id: replyToId || null,
+      audio_path: null,
+      audio_duration_ms: voice?.durationMs ?? null,
     };
     setMsgs((all) => [...all, temp]);
+    let audioUploadAttempted = false;
+    const confirmMessage = (message: GroupMessage) => setMsgs((all) => [...new Map([...all.filter((item) => item.id !== temp.id && item.id !== message.id), message].map((item) => [item.id, item])).values()].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at)));
     try {
-      const image_url = file ? await uploadChatImage(uid, file) : null;
-      const { data, error } = await sb().from("group_messages").insert({ group_id: group.id, sender_id: uid, content, image_url, reply_to_id: replyToId || null }).select().single();
+      if (voice && messageId && audioPath) {
+        const { data: alreadySent, error: lookupError } = await sb().from("group_messages").select("*").eq("id", messageId).eq("group_id", group.id).eq("sender_id", uid).maybeSingle();
+        if (lookupError) throw lookupError;
+        if (alreadySent) { confirmMessage(alreadySent as GroupMessage); onActivity?.(); return true; }
+        audioUploadAttempted = true;
+        await uploadVoice(audioPath, voice);
+      }
+      if (voice && (!messageId || !audioPath)) throw new Error("Impossible de préparer l’identifiant du message vocal. Réessaie.");
+      const image_url = voice ? null : file ? await uploadChatImage(uid, file) : null;
+      const insert = voice && messageId
+        ? { id: messageId, group_id: group.id, sender_id: uid, content: "", image_url: null, audio_path: audioPath, audio_duration_ms: voice.durationMs, reply_to_id: replyToId || null }
+        : { group_id: group.id, sender_id: uid, content, image_url, reply_to_id: replyToId || null };
+      const { data, error } = await sb().from("group_messages").insert(insert).select().single();
       if (error) throw new Error(error.message.includes("row-level") ? "Tu ne fais plus partie de ce groupe." : "Message non envoyé. Vérifie ta connexion.");
-      setMsgs((all) => (all.some((m) => m.id === data.id) ? all.filter((m) => m.id !== temp.id) : all.map((m) => (m.id === temp.id ? (data as GroupMessage) : m))));
+      confirmMessage(data as GroupMessage);
       onActivity?.();
       return true;
     } catch (e) {
+      if (voice && messageId && audioUploadAttempted) {
+        const { data: committed } = await sb().from("group_messages").select("*").eq("id", messageId).eq("group_id", group.id).eq("sender_id", uid).maybeSingle();
+        if (committed) { confirmMessage(committed as GroupMessage); onActivity?.(); return true; }
+        if (audioPath) await queueUnpublishedVoice(uid, { kind: "group", scopeId: group.id, messageId, path: audioPath });
+      }
       setMsgs((all) => all.filter((m) => m.id !== temp.id));
       toast(e instanceof Error ? e.message : "Message non envoyé.", "error");
       return false;
@@ -217,7 +241,7 @@ export function GroupChat({
     const target = msgs.find((message) => message.id === id) || replyTargets[id];
     if (!target) return null;
     const author = target.sender_id === uid ? displayName(profile) : displayName(byId(target.sender_id));
-    return { id: target.id, author, content: target.content, image_url: target.image_url };
+    return { id: target.id, author, content: target.content, image_url: target.image_url, audio_path: target.audio_path, audio_duration_ms: target.audio_duration_ms };
   };
   const startReply = (message: GroupMessage) => {
     if (message.id.startsWith("tmp-")) return toast("Attends que le message soit enregistré avant d’y répondre.", "info");
@@ -330,6 +354,8 @@ export function GroupChat({
                       mine={mine}
                       text={m.content}
                       image={m.image_url}
+                      audioPath={m.audio_path}
+                      audioDurationMs={m.audio_duration_ms}
                       time={hhmm(m.created_at)}
                       delivery={mine ? (m.id.startsWith("tmp-") ? "pending" : "sent") : undefined}
                       readCount={readCount}
@@ -363,7 +389,7 @@ export function GroupChat({
         </div>
 
         {isMember || loading ? (
-          <ChatComposer placeholder="Écrire un message" onSend={send} onTyping={sendTyping} disabled={loading} reply={replyTo ? { id: replyTo.id, author: replyTo.sender_id === uid ? displayName(profile) : displayName(byId(replyTo.sender_id)), content: replyTo.content, image_url: replyTo.image_url } : null} onCancelReply={() => setReplyTo(null)} />
+          <ChatComposer placeholder="Écrire un message" onSend={send} onTyping={sendTyping} disabled={loading} reply={replyTo ? { id: replyTo.id, author: replyTo.sender_id === uid ? displayName(profile) : displayName(byId(replyTo.sender_id)), content: replyTo.content, image_url: replyTo.image_url, audio_path: replyTo.audio_path, audio_duration_ms: replyTo.audio_duration_ms } : null} onCancelReply={() => setReplyTo(null)} />
         ) : (
           <div className="border-t border-line bg-surface px-4 py-4 text-center text-sm text-muted">Tu ne fais plus partie de ce groupe.</div>
         )}

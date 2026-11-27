@@ -15,6 +15,7 @@ import { Bubble, CHAT_BG, ChatComposer, DaySeparator, GroupAvatar, ImageViewer, 
 import { sb } from "@/lib/supabase";
 import type { GroupLite, Message, Profile } from "@/lib/types";
 import { cx, displayName, firstName } from "@/lib/utils";
+import { cleanupUnpublishedVoice, queueUnpublishedVoice, uploadVoice, voiceObjectPath, type VoicePayload } from "@/components/VoiceMessage";
 
 type Row = {
   key: string;
@@ -82,10 +83,10 @@ function MessagesInner() {
     const groupIds = groups.map((g) => g.group!.id);
     const [{ data: dmMsgs }, { data: gMsgs }] = await Promise.all([
       convIds.length
-        ? sb().from("messages").select("conversation_id, content, image_url, sender_id, created_at").in("conversation_id", convIds).order("created_at", { ascending: false }).limit(400)
-        : Promise.resolve({ data: [] as { conversation_id: string; content: string; image_url: string | null; sender_id: string; created_at: string }[] }),
+        ? sb().from("messages").select("conversation_id, content, image_url, audio_path, sender_id, created_at").in("conversation_id", convIds).order("created_at", { ascending: false }).limit(400)
+        : Promise.resolve({ data: [] as { conversation_id: string; content: string; image_url: string | null; audio_path: string | null; sender_id: string; created_at: string }[] }),
       groupIds.length
-        ? sb().from("group_messages").select("group_id, content, image_url, sender_id, created_at, sender:profiles!group_messages_sender_id_fkey(full_name,username)").in("group_id", groupIds).order("created_at", { ascending: false }).limit(400)
+        ? sb().from("group_messages").select("group_id, content, image_url, audio_path, sender_id, created_at, sender:profiles!group_messages_sender_id_fkey(full_name,username)").in("group_id", groupIds).order("created_at", { ascending: false }).limit(400)
         : Promise.resolve({ data: [] }),
     ]);
 
@@ -103,7 +104,7 @@ function MessagesInner() {
         id: c.id,
         title: displayName(o?.profile),
         at: last?.created_at || c.last_message_at,
-        preview: last?.content || (last?.image_url ? "Photo" : "Nouvelle conversation"),
+        preview: last?.audio_path ? "Message vocal" : last?.content || (last?.image_url ? "Photo" : "Nouvelle conversation"),
         previewImage: !!last?.image_url,
         who: "",
         mineLast: last?.sender_id === uid,
@@ -114,7 +115,7 @@ function MessagesInner() {
         myReadAt: me?.last_read_at ?? null,
       });
     }
-    type GM = { group_id: string; content: string; image_url: string | null; sender_id: string; created_at: string; sender: { full_name: string; username: string } | null };
+    type GM = { group_id: string; content: string; image_url: string | null; audio_path: string | null; sender_id: string; created_at: string; sender: { full_name: string; username: string } | null };
     for (const r of groups) {
       const g = r.group!;
       const msgs = ((gMsgs || []) as unknown as GM[]).filter((m) => m.group_id === g.id);
@@ -126,7 +127,7 @@ function MessagesInner() {
         id: g.id,
         title: g.name,
         at: last?.created_at || g.last_message_at,
-        preview: last ? last.content || (last.image_url ? "Photo" : "") : "Groupe créé, dis bonjour",
+        preview: last ? last.audio_path ? "Message vocal" : last.content || (last.image_url ? "Photo" : "") : "Groupe créé, dis bonjour",
         previewImage: !!last?.image_url,
         who: last ? (last.sender_id === uid ? "Toi" : firstName(last.sender)) : "",
         mineLast: last?.sender_id === uid,
@@ -317,6 +318,7 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
   useEffect(() => {
     if (row?.otherReadAt) setOtherReadAt(row.otherReadAt);
   }, [row?.otherReadAt]);
+  useEffect(() => { void cleanupUnpublishedVoice(uid); }, [uid]);
 
   const markRead = useCallback(() => {
     sb().from("conversation_members").update({ last_read_at: new Date().toISOString() }).eq("conversation_id", convId).eq("user_id", uid).then(() => onActivity());
@@ -413,19 +415,39 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
     }
   };
 
-  const send = async (content: string, file: File | null, replyToId?: string | null) => {
-    const temp: Message = { id: `tmp-${Date.now()}`, conversation_id: convId, sender_id: uid, content, image_url: file ? URL.createObjectURL(file) : null, created_at: new Date().toISOString(), reply_to_id: replyToId || null };
+  const send = async (content: string, file: File | null, replyToId?: string | null, voice?: VoicePayload | null) => {
+    const messageId = voice?.messageId || null;
+    const audioPath = voice && messageId ? voiceObjectPath("dm", convId, uid, messageId, voice.extension) : null;
+    const temp: Message = { id: messageId || `tmp-${Date.now()}`, conversation_id: convId, sender_id: uid, content: voice ? "Message vocal…" : content, image_url: voice ? null : file ? URL.createObjectURL(file) : null, created_at: new Date().toISOString(), reply_to_id: replyToId || null, audio_path: null, audio_duration_ms: voice?.durationMs ?? null };
     setMsgs((all) => [...all, temp]);
+    let audioUploadAttempted = false;
+    const confirmMessage = (message: Message) => setMsgs((all) => [...new Map([...all.filter((item) => item.id !== temp.id && item.id !== message.id), message].map((item) => [item.id, item])).values()].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at)));
     try {
-      const image_url = file ? await uploadChatImage(uid, file) : null;
-      const { data, error } = await sb().from("messages").insert({ conversation_id: convId, sender_id: uid, content, image_url, reply_to_id: replyToId || null }).select().single();
+      if (voice && messageId && audioPath) {
+        const { data: alreadySent, error: lookupError } = await sb().from("messages").select("*").eq("id", messageId).eq("conversation_id", convId).eq("sender_id", uid).maybeSingle();
+        if (lookupError) throw lookupError;
+        if (alreadySent) { confirmMessage(alreadySent as Message); onActivity(); return true; }
+        audioUploadAttempted = true;
+        await uploadVoice(audioPath, voice);
+      }
+      if (voice && (!messageId || !audioPath)) throw new Error("Impossible de préparer l’identifiant du message vocal. Réessaie.");
+      const image_url = voice ? null : file ? await uploadChatImage(uid, file) : null;
+      const insert = voice && messageId
+        ? { id: messageId, conversation_id: convId, sender_id: uid, content: "", image_url: null, audio_path: audioPath, audio_duration_ms: voice.durationMs, reply_to_id: replyToId || null }
+        : { conversation_id: convId, sender_id: uid, content, image_url, reply_to_id: replyToId || null };
+      const { data, error } = await sb().from("messages").insert(insert).select().single();
       if (error) throw error;
-      setMsgs((all) => (all.some((m) => m.id === data.id) ? all.filter((m) => m.id !== temp.id) : all.map((m) => (m.id === temp.id ? (data as Message) : m))));
+      confirmMessage(data as Message);
       onActivity();
       return true;
-    } catch {
+    } catch (cause) {
+      if (voice && messageId && audioUploadAttempted) {
+        const { data: committed } = await sb().from("messages").select("*").eq("id", messageId).eq("conversation_id", convId).eq("sender_id", uid).maybeSingle();
+        if (committed) { confirmMessage(committed as Message); onActivity(); return true; }
+        if (audioPath) await queueUnpublishedVoice(uid, { kind: "dm", scopeId: convId, messageId, path: audioPath });
+      }
       setMsgs((all) => all.filter((m) => m.id !== temp.id));
-      toast("Message non envoyé. Vérifie ta connexion.", "error");
+      toast(cause instanceof Error && cause.message ? cause.message : "Message non envoyé. Vérifie ta connexion.", "error");
       return false;
     }
   };
@@ -434,7 +456,7 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
     if (!id) return null;
     const target = msgs.find((message) => message.id === id) || replyTargets[id];
     if (!target) return null;
-    return { id: target.id, author: target.sender_id === uid ? displayName(profile) : displayName(other), content: target.content, image_url: target.image_url };
+    return { id: target.id, author: target.sender_id === uid ? displayName(profile) : displayName(other), content: target.content, image_url: target.image_url, audio_path: target.audio_path, audio_duration_ms: target.audio_duration_ms };
   };
   const startReply = (message: Message) => {
     if (message.id.startsWith("tmp-")) return toast("Attends que le message soit enregistré avant d’y répondre.", "info");
@@ -512,7 +534,7 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
                 {newDay && <DaySeparator iso={m.created_at} />}
                 {firstUnreadId === m.id && <div className="self-center my-3 rounded-full bg-cobalt-soft px-3 py-1 text-[11px] font-bold text-cobalt">Nouveaux messages</div>}
                 <div className={cx("flex", mine ? "justify-end" : "justify-start", groupedTop ? "mt-[3px]" : "mt-2.5")}>
-                  <SwipeReply onReply={() => startReply(m)}><Bubble mine={mine} text={m.content} image={m.image_url} time={hhmm(m.created_at)} delivery={mine ? delivery : undefined} groupedTop={groupedTop} groupedBottom={groupedBottom} onImage={setViewer} onReply={() => startReply(m)} hasReply={!!m.reply_to_id} reply={resolveReply(m.reply_to_id)} onJumpReply={jumpToMessage} /></SwipeReply>
+                  <SwipeReply onReply={() => startReply(m)}><Bubble mine={mine} text={m.content} image={m.image_url} audioPath={m.audio_path} audioDurationMs={m.audio_duration_ms} time={hhmm(m.created_at)} delivery={mine ? delivery : undefined} groupedTop={groupedTop} groupedBottom={groupedBottom} onImage={setViewer} onReply={() => startReply(m)} hasReply={!!m.reply_to_id} reply={resolveReply(m.reply_to_id)} onJumpReply={jumpToMessage} /></SwipeReply>
                 </div>
               </div>
             );
@@ -530,7 +552,7 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
         <div ref={endRef} />
         {showRecent && <button type="button" onClick={() => { nearBottom.current = true; setShowRecent(false); endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }} className="sticky bottom-3 self-end z-10 btn btn-soft !rounded-full !px-3 !py-2 shadow-[var(--shadow-pop)]"><ArrowDown size={16} /> Messages récents</button>}
       </div>
-      <ChatComposer placeholder="Écrire un message" onSend={send} onTyping={sendTyping} reply={replyTo ? { id: replyTo.id, author: replyTo.sender_id === uid ? displayName(profile) : displayName(other), content: replyTo.content, image_url: replyTo.image_url } : null} onCancelReply={() => setReplyTo(null)} />
+      <ChatComposer placeholder="Écrire un message" onSend={send} onTyping={sendTyping} reply={replyTo ? { id: replyTo.id, author: replyTo.sender_id === uid ? displayName(profile) : displayName(other), content: replyTo.content, image_url: replyTo.image_url, audio_path: replyTo.audio_path, audio_duration_ms: replyTo.audio_duration_ms } : null} onCancelReply={() => setReplyTo(null)} />
       <ImageViewer src={viewer} onClose={() => setViewer(null)} />
     </div>
   );

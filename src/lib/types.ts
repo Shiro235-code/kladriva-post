@@ -59,6 +59,8 @@ export type Message = {
   image_url: string | null;
   created_at: string;
   reply_to_id?: string | null;
+  audio_path?: string | null;
+  audio_duration_ms?: number | null;
 };
 
 export type GroupMessage = {
@@ -69,6 +71,8 @@ export type GroupMessage = {
   image_url: string | null;
   created_at: string;
   reply_to_id?: string | null;
+  audio_path?: string | null;
+  audio_duration_ms?: number | null;
 };
 
 export type GroupLite = { id: string; name: string; description?: string; color: string; icon: string; avatar_url?: string | null; created_by?: string };
