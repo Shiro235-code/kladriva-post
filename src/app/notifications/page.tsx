@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MessageCircle, Reply, AtSign, UserPlus, Users, Heart, Bell } from "lucide-react";
+import { MessageCircle, Reply, AtSign, UserPlus, Users, Heart, Bell, Volume2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { useActivity } from "@/components/Providers";
@@ -10,6 +10,7 @@ import { Avatar, Empty, Spinner } from "@/components/ui";
 import { sb } from "@/lib/supabase";
 import type { Notification } from "@/lib/types";
 import { cx, displayName, reactionOf, timeAgo } from "@/lib/utils";
+import { messageNotificationHref } from "@/lib/message-notifications.mjs";
 
 const SELECT = "*, actor:profiles!notifications_actor_id_fkey(*), post:posts(id,content), group:groups(id,name)";
 
@@ -35,12 +36,17 @@ function describe(n: Notification): { icon: React.ReactNode; text: React.ReactNo
       return { icon: <UserPlus size={13} className="text-cobalt" />, text: <>{who} t&apos;a ajouté au groupe <b className="font-semibold">{n.group?.name || ""}</b></>, href: n.group ? `/messages?g=${n.group.id}` : "/messages" };
     case "comment_like":
       return { icon: <Heart size={12} className="text-coral" fill="currentColor" />, text: <>{who} a aimé ton commentaire</>, href: post };
+    case "message":
+      return { icon: <MessageCircle size={13} className="text-cobalt" />, text: <>{who} t&apos;a envoyé un message</>, href: messageNotificationHref(n.type, n.data) || "/messages" };
+    case "group_message":
+      return { icon: <Users size={13} className="text-cobalt" />, text: <>{who} a écrit dans <b className="font-semibold">{n.group?.name || "un groupe"}</b></>, href: messageNotificationHref(n.type, n.data) || "/messages" };
   }
+  return { icon: <Bell size={13} className="text-muted" />, text: <>Nouvelle notification</>, href: "/notifications" };
 }
 
 export default function NotificationsPage() {
   const { session, loading: authLoading } = useAuth();
-  const { refresh } = useActivity();
+  const { refresh, messageSound, setMessageSound } = useActivity();
   const router = useRouter();
   const uid = session?.user.id;
   const [items, setItems] = useState<Notification[]>([]);
@@ -63,7 +69,7 @@ export default function NotificationsPage() {
     if (!uid) return;
     const ch = sb()
       .channel(`notif-page-${uid}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${uid}` }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${uid}` }, load)
       .subscribe();
     return () => {
       sb().removeChannel(ch);
@@ -121,9 +127,15 @@ export default function NotificationsPage() {
   return (
     <AppShell>
       <div className="max-w-[680px] 2xl:max-w-[780px] mx-auto">
-        <div className="flex items-end justify-between gap-4 mb-5">
+        <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
           <h1 className="font-display text-[34px] font-bold leading-tight">Notifications</h1>
-          {unread > 0 && <button onClick={markAll} className="btn btn-soft !py-2 text-[13px]">Tout marquer comme lu</button>}
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="min-h-10 inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 text-[13px] font-semibold text-ink-2 cursor-pointer">
+              <input type="checkbox" className="accent-[var(--cobalt)]" checked={messageSound} onChange={(e) => setMessageSound(e.target.checked)} />
+              <Volume2 size={15} /> Son des messages
+            </label>
+            {unread > 0 && <button onClick={markAll} className="btn btn-soft min-h-10 !py-2 text-[13px]">Tout marquer comme lu</button>}
+          </div>
         </div>
         <div className="flex gap-1.5 mb-5">
           {(["all", "unread"] as const).map((f) => (

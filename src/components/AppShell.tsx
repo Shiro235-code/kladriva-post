@@ -67,7 +67,7 @@ export function AppShell({ children, wide = false, full = false, chat = false }:
   return (
     <div className="min-h-screen">
       {/* En-tête mobile */}
-      <header className="lg:hidden sticky top-0 z-30 bg-canvas/85 backdrop-blur-md border-b border-line px-4 h-14 flex items-center justify-between">
+      <header className="lg:hidden sticky top-0 z-30 bg-canvas/90 backdrop-blur-md border-b border-line px-4 pt-[env(safe-area-inset-top)] h-[calc(3.5rem+env(safe-area-inset-top))] flex items-center justify-between">
         <Link href="/feed" aria-label="Accueil"><Logo size={28} /></Link>
         <div className="flex items-center gap-0.5">
           <button onClick={() => setPalette(true)} className="icon-btn" aria-label="Rechercher"><Search size={20} /></button>
@@ -171,7 +171,7 @@ export function AppShell({ children, wide = false, full = false, chat = false }:
       </div>
 
       {/* Navigation mobile */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-surface/95 backdrop-blur-md border-t border-line h-[68px] grid grid-cols-5 items-center pb-[env(safe-area-inset-bottom)]" aria-label="Navigation">
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-surface/95 backdrop-blur-md border-t border-line h-[calc(68px+env(safe-area-inset-bottom))] grid grid-cols-5 items-center pb-[env(safe-area-inset-bottom)]" aria-label="Navigation">
         <MobileTab href="/feed" label="Accueil" icon={Home} on={isActive("/feed")} />
         <MobileTab href="/groups" label="Groupes" icon={Users} on={isActive("/groups")} />
         <button onClick={openCompose} className="justify-self-center w-12 h-12 rounded-2xl bg-cobalt text-white grid place-items-center shadow-[var(--shadow-pop)]" aria-label="Publier">

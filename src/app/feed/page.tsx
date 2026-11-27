@@ -24,7 +24,7 @@ export default function FeedPage() {
 
   return (
     <AppShell>
-      <div className="max-w-[680px] 2xl:max-w-[780px] mx-auto">
+      <div className="max-w-[720px] 2xl:max-w-[860px] mx-auto">
         <div className="mb-5">
           <h1 className="font-display text-[30px] sm:text-[36px] font-bold leading-[1.05]">
             {session ? `${greeting()}, ${firstName(profile)}` : "Ce que la promo apprend"}

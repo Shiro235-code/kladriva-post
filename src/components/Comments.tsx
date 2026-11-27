@@ -23,12 +23,15 @@ export function Comments({ postId, postAuthorId, onCount }: { postId: string; po
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(async () => {
-    const { data } = await sb().from("comments").select(COMMENT_SELECT).eq("post_id", postId).order("created_at", { ascending: true });
-    const rows = (data as unknown as Comment[]) || [];
-    setItems(rows);
-    onCount(rows.length);
-    setLoading(false);
-  }, [postId, onCount]);
+    try {
+      const { data, error } = await sb().from("comments").select(COMMENT_SELECT).eq("post_id", postId).order("created_at", { ascending: true });
+      if (error) throw error;
+      const rows = (data as unknown as Comment[]) || [];
+      setItems(rows);
+      onCount(rows.length);
+    } catch { toast("Les commentaires n'ont pas pu être chargés.", "error"); }
+    finally { setLoading(false); }
+  }, [postId, onCount, toast]);
 
   useEffect(() => {
     load();
@@ -64,30 +67,37 @@ export function Comments({ postId, postAuthorId, onCount }: { postId: string; po
     const content = text.trim();
     if (!content || !uid || busy) return;
     setBusy(true);
-    const { data, error } = await sb()
-      .from("comments")
-      .insert({ post_id: postId, author_id: uid, content, parent_id: replyTo?.rootId ?? null })
-      .select(COMMENT_SELECT)
-      .single();
-    setBusy(false);
-    if (error) return toast("Ton commentaire n'a pas été envoyé. Réessaie.", "error");
-    setText("");
-    setReplyTo(null);
-    if (data) {
-      setItems((it) => {
-        const next = it.some((c) => c.id === (data as unknown as Comment).id) ? it : [...it, data as unknown as Comment];
-        onCount(next.length);
-        return next;
-      });
-    }
+    try {
+      const { data, error } = await sb()
+        .from("comments")
+        .insert({ post_id: postId, author_id: uid, content, parent_id: replyTo?.rootId ?? null })
+        .select(COMMENT_SELECT)
+        .single();
+      if (error) throw error;
+      setText("");
+      setReplyTo(null);
+      if (data) {
+        setItems((it) => {
+          const next = it.some((c) => c.id === (data as unknown as Comment).id) ? it : [...it, data as unknown as Comment];
+          onCount(next.length);
+          return next;
+        });
+      }
+    } catch { toast("Ton commentaire n'a pas été envoyé. Ton texte est conservé ; réessaie.", "error"); }
+    finally { setBusy(false); }
   };
 
   const del = async (id: string) => {
     const prev = items;
-    setItems((it) => it.filter((c) => c.id !== id && c.parent_id !== id));
-    const { error } = await sb().from("comments").delete().eq("id", id);
-    if (error) {
+    const next = items.filter((c) => c.id !== id && c.parent_id !== id);
+    setItems(next);
+    onCount(next.length);
+    try {
+      const { error } = await sb().from("comments").delete().eq("id", id);
+      if (error) throw error;
+    } catch {
       setItems(prev);
+      onCount(prev.length);
       toast("Suppression impossible.", "error");
     }
   };
@@ -95,13 +105,21 @@ export function Comments({ postId, postAuthorId, onCount }: { postId: string; po
   const like = async (c: Comment) => {
     if (!uid) return;
     const liked = c.comment_likes.some((l) => l.user_id === uid);
+    const previous = c.comment_likes;
     setItems((it) =>
       it.map((x) =>
         x.id === c.id ? { ...x, comment_likes: liked ? x.comment_likes.filter((l) => l.user_id !== uid) : [...x.comment_likes, { user_id: uid }] } : x,
       ),
     );
-    if (liked) await sb().from("comment_likes").delete().eq("comment_id", c.id).eq("user_id", uid);
-    else await sb().from("comment_likes").insert({ comment_id: c.id, user_id: uid });
+    try {
+      const result = liked
+        ? await sb().from("comment_likes").delete().eq("comment_id", c.id).eq("user_id", uid)
+        : await sb().from("comment_likes").insert({ comment_id: c.id, user_id: uid });
+      if (result.error) throw result.error;
+    } catch {
+      setItems((all) => all.map((item) => item.id === c.id ? { ...item, comment_likes: previous } : item));
+      toast("Ta réaction au commentaire n'a pas été enregistrée.", "error");
+    }
   };
 
   const Row = ({ c, small }: { c: Comment; small?: boolean }) => {
@@ -120,12 +138,12 @@ export function Comments({ postId, postAuthorId, onCount }: { postId: string; po
           <div className="flex items-center gap-3.5 text-[12.5px] text-muted mt-1 ml-2 font-semibold">
             <span className="font-normal">{timeAgo(c.created_at)}</span>
             {uid && (
-              <button onClick={() => like(c)} className={cx("hover:underline", liked && "text-coral")}>
+              <button onClick={() => like(c)} className={cx("min-h-9 px-1 rounded-md hover:underline", liked && "text-coral")}>
                 J&apos;aime{c.comment_likes.length > 0 && ` · ${c.comment_likes.length}`}
               </button>
             )}
             {!uid && c.comment_likes.length > 0 && <span className="inline-flex items-center gap-1"><Heart size={12} className="text-coral" fill="currentColor" /> {c.comment_likes.length}</span>}
-            {uid && <button onClick={() => startReply(c)} className="hover:underline">Répondre</button>}
+            {uid && <button onClick={() => startReply(c)} className="min-h-9 px-1 rounded-md hover:underline">Répondre</button>}
             {uid === c.author_id && (
               <button onClick={() => del(c.id)} className="hover:text-coral sm:opacity-0 group-hover:opacity-100 focus:opacity-100 transition">Supprimer</button>
             )}
@@ -182,6 +200,7 @@ export function Comments({ postId, postAuthorId, onCount }: { postId: string; po
               <textarea
                 ref={inputRef}
                 value={text}
+                aria-label={replyTo ? `Répondre à ${replyTo.name}` : "Écrire un commentaire"}
                 rows={1}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
@@ -194,7 +213,7 @@ export function Comments({ postId, postAuthorId, onCount }: { postId: string; po
                 maxLength={2000}
                 className="flex-1 bg-transparent outline-none focus-visible:outline-none text-[14.5px] py-1.5 resize-none leading-snug"
               />
-              <button onClick={send} disabled={!text.trim() || busy} className="w-8 h-8 shrink-0 rounded-full bg-cobalt text-white grid place-items-center disabled:opacity-30 transition" aria-label="Envoyer le commentaire">
+              <button onClick={send} disabled={!text.trim() || busy} className="w-11 h-11 shrink-0 rounded-full bg-cobalt text-white grid place-items-center disabled:opacity-30 transition focus-visible:ring-2 focus-visible:ring-cobalt" aria-label="Envoyer le commentaire">
                 <Send size={14} />
               </button>
             </div>

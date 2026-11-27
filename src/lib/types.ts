@@ -87,11 +87,11 @@ export type Notification = {
   id: string;
   user_id: string;
   actor_id: string | null;
-  type: "reaction" | "comment" | "reply" | "mention" | "follow" | "group_join" | "comment_like" | "group_add";
+  type: "reaction" | "comment" | "reply" | "mention" | "follow" | "group_join" | "comment_like" | "group_add" | "message" | "group_message";
   post_id: string | null;
   comment_id: string | null;
   group_id: string | null;
-  data: { reaction?: ReactionType };
+  data: { reaction?: ReactionType; message_id?: string; conversation_id?: string; group_id?: string };
   read: boolean;
   created_at: string;
   actor: Profile | null;

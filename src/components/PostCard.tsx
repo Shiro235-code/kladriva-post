@@ -30,6 +30,12 @@ export function PostCard({ post, onDeleted, startOpen = false }: { post: Post; o
   const [menu, setMenu] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [lightbox, setLightbox] = useState<number | null>(null);
+  const [reactionBusy, setReactionBusy] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
+
+  useEffect(() => {
+    setSaved(!!uid && (post.saves || []).some((save) => save.user_id === uid));
+  }, [uid, post.id, post.saves]);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -44,23 +50,24 @@ export function PostCard({ post, onDeleted, startOpen = false }: { post: Post; o
 
   const react = async (type: ReactionType) => {
     if (!uid) return router.push("/auth");
+    if (reactionBusy) return;
     setPicker(false);
     const prev = reactions;
-    if (mine && mine.type === type) {
-      setReactions((r) => r.filter((x) => x.user_id !== uid));
-      const { error } = await sb().from("likes").delete().eq("post_id", post.id).eq("user_id", uid);
-      if (error) setReactions(prev);
-      return;
-    }
-    setPopKey((k) => k + 1);
-    setReactions((r) => [...r.filter((x) => x.user_id !== uid), { user_id: uid, type }]);
-    const { error } = mine
-      ? await sb().from("likes").update({ type }).eq("post_id", post.id).eq("user_id", uid)
-      : await sb().from("likes").insert({ post_id: post.id, user_id: uid, type });
-    if (error) {
+    const removing = !!mine && mine.type === type;
+    setReactionBusy(true);
+    setReactions((current) => removing ? current.filter((x) => x.user_id !== uid) : [...current.filter((x) => x.user_id !== uid), { user_id: uid, type }]);
+    if (!removing) setPopKey((k) => k + 1);
+    try {
+      const { error } = removing
+        ? await sb().from("likes").delete().eq("post_id", post.id).eq("user_id", uid)
+        : mine
+          ? await sb().from("likes").update({ type }).eq("post_id", post.id).eq("user_id", uid)
+          : await sb().from("likes").insert({ post_id: post.id, user_id: uid, type });
+      if (error) throw error;
+    } catch {
       setReactions(prev);
       toast("Ta réaction n'a pas été enregistrée. Réessaie.", "error");
-    }
+    } finally { setReactionBusy(false); }
   };
 
   const loveFromImage = () => {
@@ -70,15 +77,20 @@ export function PostCard({ post, onDeleted, startOpen = false }: { post: Post; o
 
   const toggleSave = async () => {
     if (!uid) return router.push("/auth");
+    if (saveBusy) return;
     const next = !saved;
+    setSaveBusy(true);
     setSaved(next);
-    const { error } = next
-      ? await sb().from("saves").insert({ post_id: post.id, user_id: uid })
-      : await sb().from("saves").delete().eq("post_id", post.id).eq("user_id", uid);
-    if (error) {
+    try {
+      const { error } = next
+        ? await sb().from("saves").insert({ post_id: post.id, user_id: uid })
+        : await sb().from("saves").delete().eq("post_id", post.id).eq("user_id", uid);
+      if (error) throw error;
+      toast(next ? "Enregistré dans tes favoris" : "Retiré de tes favoris");
+    } catch {
       setSaved(!next);
       toast("Enregistrement impossible. Réessaie.", "error");
-    } else toast(next ? "Enregistré dans tes favoris" : "Retiré de tes favoris");
+    } finally { setSaveBusy(false); }
   };
 
   const link = () => `${window.location.origin}/p/${post.id}`;
@@ -112,7 +124,7 @@ export function PostCard({ post, onDeleted, startOpen = false }: { post: Post; o
   }, [menu]);
 
   return (
-    <article className="panel">
+    <article className="panel overflow-hidden transition-[border-color,box-shadow] duration-200 hover:border-line-strong hover:shadow-[0_8px_28px_rgba(20,24,43,0.055)]">
       <div className="p-4 sm:p-5 pb-0 sm:pb-0">
         <header className="flex items-start gap-3">
           <Link href={`/u/${post.author?.username}`} className="shrink-0"><Avatar profile={post.author} size={44} /></Link>
@@ -141,7 +153,10 @@ export function PostCard({ post, onDeleted, startOpen = false }: { post: Post; o
             </button>
             {menu && (
               <div className="absolute right-0 top-10 z-20 w-56 bg-surface border border-line rounded-2xl shadow-[var(--shadow-pop)] p-1.5 picker-in" role="menu">
-                <MenuItem icon={<Link2 size={16} />} onClick={async () => { await navigator.clipboard.writeText(link()); toast("Lien copié"); }}>Copier le lien</MenuItem>
+                <MenuItem icon={<Link2 size={16} />} onClick={async () => {
+                  try { await navigator.clipboard.writeText(link()); toast("Lien copié"); }
+                  catch { toast("Impossible de copier le lien sur cet appareil.", "error"); }
+                }}>Copier le lien</MenuItem>
                 <MenuItem icon={<Bookmark size={16} />} onClick={toggleSave}>{saved ? "Retirer des favoris" : "Enregistrer"}</MenuItem>
                 {uid === post.author_id && (
                   <MenuItem icon={<Trash2 size={16} />} danger onClick={() => setConfirmDel(true)}>Supprimer</MenuItem>
@@ -222,6 +237,8 @@ export function PostCard({ post, onDeleted, startOpen = false }: { post: Post; o
               </div>
             )}
             <ActionButton
+              disabled={reactionBusy}
+              aria-label={mine ? `Retirer la réaction ${reactionOf(mine.type).label}` : "Aimer la publication"}
               onClick={() => react(mine ? mine.type : "like")}
               onTouchStart={() => { holdTimer.current = setTimeout(() => setPicker(true), 420); }}
               onTouchEnd={() => { if (holdTimer.current) clearTimeout(holdTimer.current); }}
@@ -238,15 +255,15 @@ export function PostCard({ post, onDeleted, startOpen = false }: { post: Post; o
               <span className="hidden sm:inline">{mine ? reactionOf(mine.type).label : "J'aime"}</span>
             </ActionButton>
           </div>
-          <ActionButton onClick={() => setOpen((o) => !o)} active={open}>
+          <ActionButton onClick={() => setOpen((o) => !o)} active={open} aria-label={open ? "Fermer les commentaires" : "Ouvrir les commentaires"}>
             <MessageCircle size={19} />
             <span className="hidden sm:inline">Commenter</span>
           </ActionButton>
-          <ActionButton onClick={share}>
+          <ActionButton onClick={share} aria-label="Partager la publication">
             <Share2 size={18} />
             <span className="hidden sm:inline">Partager</span>
           </ActionButton>
-          <ActionButton onClick={toggleSave} active={saved} style={saved ? { color: "var(--cobalt)" } : undefined}>
+          <ActionButton onClick={toggleSave} disabled={saveBusy} active={saved} aria-label={saved ? "Retirer des favoris" : "Enregistrer dans mes favoris"} style={saved ? { color: "var(--cobalt)" } : undefined}>
             <Bookmark size={18} fill={saved ? "currentColor" : "none"} />
             <span className="hidden sm:inline">{saved ? "Enregistré" : "Enregistrer"}</span>
           </ActionButton>
@@ -294,10 +311,10 @@ function FeedVideo({ src }: { src: string }) {
   }, []);
   return (
     <div className="relative group">
-      <video ref={ref} src={src} muted={muted} loop playsInline preload="metadata" controls className="w-full max-h-[640px] bg-black block" />
+          <video ref={ref} src={src} muted={muted} loop playsInline preload="metadata" controls className="w-full aspect-video max-h-[640px] object-contain bg-black block" />
       <button
         onClick={() => setMuted((m) => !m)}
-        className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/60 text-white grid place-items-center opacity-90 hover:bg-black/80"
+        className="absolute top-3 right-3 w-11 h-11 rounded-full bg-black/60 text-white grid place-items-center opacity-95 hover:bg-black/80 focus-visible:ring-2 focus-visible:ring-white"
         aria-label={muted ? "Activer le son" : "Couper le son"}
       >
         {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
@@ -313,10 +330,10 @@ function ActionButton({
   ...rest
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }) {
   return (
-    <button
+      <button
       {...rest}
       className={cx(
-        "w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[14px] font-semibold transition select-none",
+        "w-full min-h-11 flex items-center justify-center gap-2 px-1 py-2 rounded-xl text-[13px] sm:text-[14px] font-semibold transition select-none focus-visible:ring-2 focus-visible:ring-cobalt",
         active ? "text-ink" : "text-muted hover:text-ink",
         "hover:bg-surface-2",
         className,
@@ -339,28 +356,28 @@ function MenuItem({ children, icon, onClick, danger }: { children: React.ReactNo
 function ImageGrid({ images, onOpen }: { images: string[]; onOpen: (i: number) => void }) {
   const n = images.length;
   const cell = (src: string, i: number, cls: string) => (
-    <button key={src} onClick={() => onOpen(i)} className={cx("relative overflow-hidden bg-surface-2 block", cls)} aria-label={`Agrandir l'image ${i + 1}`}>
+    <button key={src} onClick={() => onOpen(i)} className={cx("group relative overflow-hidden bg-surface-2 block focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cobalt", cls)} aria-label={`Agrandir l'image ${i + 1}`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="" loading="lazy" className="w-full h-full object-cover hover:scale-[1.02] transition duration-300" />
+      <img src={src} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain transition-transform duration-200 group-hover:scale-[1.01]" />
     </button>
   );
   if (n === 1)
     return (
-      <button onClick={() => onOpen(0)} className="block w-full bg-surface-2" aria-label="Agrandir l'image">
+      <button onClick={() => onOpen(0)} className="block w-full aspect-[4/3] bg-surface-2 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cobalt" aria-label="Agrandir l'image">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={images[0]} alt="" loading="lazy" className="w-full max-h-[580px] object-cover" />
+        <img src={images[0]} alt="" loading="lazy" decoding="async" className="w-full h-full object-contain" />
       </button>
     );
-  if (n === 2) return <div className="grid grid-cols-2 gap-0.5 h-[300px]">{images.map((s, i) => cell(s, i, "h-full"))}</div>;
+  if (n === 2) return <div className="grid grid-cols-2 gap-1 aspect-[3/2] bg-surface-2">{images.map((s, i) => cell(s, i, "h-full"))}</div>;
   if (n === 3)
     return (
-      <div className="grid grid-cols-2 grid-rows-2 gap-0.5 h-[360px]">
+      <div className="grid grid-cols-2 grid-rows-2 gap-1 aspect-[4/3] bg-surface-2">
         {cell(images[0], 0, "row-span-2 h-full")}
         {cell(images[1], 1, "h-full")}
         {cell(images[2], 2, "h-full")}
       </div>
     );
-  return <div className="grid grid-cols-2 grid-rows-2 gap-0.5 h-[380px]">{images.slice(0, 4).map((s, i) => cell(s, i, "h-full"))}</div>;
+  return <div className="grid grid-cols-2 grid-rows-2 gap-1 aspect-square bg-surface-2">{images.slice(0, 4).map((s, i) => cell(s, i, "h-full"))}</div>;
 }
 
 function Lightbox({ images, index, onClose }: { images: string[]; index: number; onClose: () => void }) {
