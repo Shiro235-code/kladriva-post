@@ -462,7 +462,8 @@ const insert = {
   audio_path: voice ? audioPath : null,
   audio_duration_ms: voice ? voice.durationMs : null,
   reply_to_id: replyToId || null,
-}      const { data, error } = await sb().from("messages").insert(insert).select().single();
+};   
+   const { data, error } = await sb().from("messages").insert(insert).select().single();
       if (error) throw error;
       confirmMessage(data as Message);
       onActivity();
