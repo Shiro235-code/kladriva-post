@@ -9,6 +9,7 @@ import { createVoiceMessageId, VoiceMessagePlayer, VoiceRecorder, type VoicePayl
 import { MESSAGE_REACTIONS, type MessageReactionEmoji, type ReactionView } from "./MessageInteractions";
 import { MentionTextarea } from "./MentionTextarea";
 import { RichText } from "./ui";
+import type { MentionReference } from "@/lib/types";
 
 /* ---------------- Avatar de groupe : rond, comme WhatsApp ---------------- */
 export function GroupAvatar({
@@ -265,6 +266,7 @@ export function Bubble({
   audioDurationMs,
   edited,
   deleted,
+  mentions,
   canEdit,
   reactions = [],
   onReact,
@@ -291,6 +293,7 @@ export function Bubble({
   audioDurationMs?: number | null;
   edited?: boolean;
   deleted?: boolean;
+  mentions?: MentionReference[];
   canEdit?: boolean;
   reactions?: ReactionView[];
   onReact?: (emoji: MessageReactionEmoji) => Promise<boolean> | boolean;
@@ -456,7 +459,7 @@ export function Bubble({
       )}
       {text ? (
         <div className={cx("text-[15px] leading-[1.38]", image && "px-2 pt-1.5 pb-0.5")}>
-          <RichText text={text} className="inline whitespace-pre-wrap break-words" />
+          <RichText text={text} mentions={deleted ? undefined : mentions} className="inline whitespace-pre-wrap break-words" />
           <span className="float-right ml-2.5 mt-[7px]">{meta}</span>
         </div>
       ) : audioPath ? (

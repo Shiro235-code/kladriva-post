@@ -17,6 +17,7 @@ import type { GroupLite, Message, Profile } from "@/lib/types";
 import { cx, displayName, firstName } from "@/lib/utils";
 import { cleanupUnpublishedVoice, queueUnpublishedVoice, uploadVoice, voiceObjectPath, type VoicePayload } from "@/components/VoiceMessage";
 import { useMessageInteractions } from "@/components/MessageInteractions";
+import { fetchDmMessageWithMentions } from "@/lib/mention-message-data";
 
 type Row = {
   key: string;
@@ -355,7 +356,9 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
       setOtherReadAt(recipient?.last_read_at ?? initialReadAt.current.other);
       setMyReadAt((current) => current ?? self.last_read_at ?? initialReadAt.current.mine);
 
-      const { data } = await sb().from("messages").select("*").eq("conversation_id", convId).order("created_at", { ascending: false }).limit(500);
+      const { data } = await sb().from("messages")
+        .select("*, dm_message_mentions(user_id,username,is_active,profile:profiles(id,username,full_name,avatar_url))")
+        .eq("conversation_id", convId).order("created_at", { ascending: false }).limit(500);
       if (!alive) return;
       setMsgs(((data as Message[]) || []).reverse());
       setLoading(false);
@@ -365,11 +368,19 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${convId}` }, (p) => {
           const m = p.new as Message;
           setMsgs((all) => (all.some((x) => x.id === m.id) ? all : [...all, m]));
+          void fetchDmMessageWithMentions(m.id).then((full) => {
+            if (full) setMsgs((all) => all.map((item) => item.id === full.id ? full : item));
+          }).catch(() => toast("Les mentions du message n'ont pas pu être chargées.", "error"));
           if (m.sender_id !== uid) { setTyping(false); markRead(); }
         })
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${convId}` }, (p) => {
           const message = p.new as Message;
           setMsgs((all) => all.map((item) => item.id === message.id ? message : item));
+          if (!message.deleted_at) {
+            void fetchDmMessageWithMentions(message.id).then((full) => {
+              if (full) setMsgs((all) => all.map((item) => item.id === full.id ? full : item));
+            }).catch(() => toast("Les mentions du message n'ont pas pu être actualisées.", "error"));
+          }
           if (message.deleted_at) {
             setReplyTo((current) => current?.id === message.id ? null : current);
             setReplyTargets((targets) => ({ ...targets, [message.id]: message }));
@@ -412,7 +423,7 @@ function DmThread({ convId, row, uid, online, onActivity }: { convId: string; ro
       if (typingChannel) sb().removeChannel(typingChannel);
       typingChRef.current = null;
     };
-  }, [convId, uid, markRead]);
+  }, [convId, uid, markRead, toast]);
 
   useEffect(() => {
     if (nearBottom.current) endRef.current?.scrollIntoView({ behavior: msgs.length > 40 ? "auto" : "smooth", block: "end" });
@@ -466,6 +477,9 @@ const insert = {
    const { data, error } = await sb().from("messages").insert(insert).select().single();
       if (error) throw error;
       confirmMessage(data as Message);
+   void fetchDmMessageWithMentions(data.id).then((full) => {
+     if (full) confirmMessage(full);
+   }).catch(() => toast("Le message est envoyé, mais ses mentions n'ont pas pu être chargées.", "error"));
       onActivity();
       return true;
     } catch (cause) {
@@ -586,7 +600,7 @@ const insert = {
                 {newDay && <DaySeparator iso={m.created_at} />}
                 {firstUnreadId === m.id && <div className="self-center my-3 rounded-full bg-cobalt-soft px-3 py-1 text-[11px] font-bold text-cobalt">Nouveaux messages</div>}
                 <div className={cx("flex", mine ? "justify-end" : "justify-start", groupedTop ? "mt-[3px]" : "mt-2.5")}>
-                  <SwipeReply onReply={() => startReply(m)}><Bubble mine={mine} text={m.content} image={m.image_url} audioPath={m.audio_path} audioDurationMs={m.audio_duration_ms} time={hhmm(m.created_at)} delivery={mine ? delivery : undefined} groupedTop={groupedTop} groupedBottom={groupedBottom} onImage={setViewer} onReply={m.id.startsWith("tmp-") ? undefined : () => startReply(m)} hasReply={!!m.reply_to_id} reply={resolveReply(m.reply_to_id)} onJumpReply={jumpToMessage} edited={!!m.edited_at} deleted={!!m.deleted_at} canEdit={mine && !m.id.startsWith("tmp-") && !m.deleted_at && !m.image_url && !m.audio_path && !!m.content.trim()} reactions={m.deleted_at ? [] : interactions.reactionsByMessage[m.id] || []} onReact={(emoji) => interactions.react(m.id, emoji)} onEdit={(content) => editMessage(m, content)} onDeleteForMe={() => hideMessage(m.id)} onDeleteForEveryone={mine ? () => deleteForEveryone(m) : undefined} /></SwipeReply>
+                  <SwipeReply onReply={() => startReply(m)}><Bubble mine={mine} text={m.deleted_at ? "Message supprimé" : m.content} mentions={m.dm_message_mentions} image={m.deleted_at ? null : m.image_url} audioPath={m.deleted_at ? null : m.audio_path} audioDurationMs={m.audio_duration_ms} time={hhmm(m.created_at)} delivery={mine ? delivery : undefined} groupedTop={groupedTop} groupedBottom={groupedBottom} onImage={setViewer} onReply={m.id.startsWith("tmp-") ? undefined : () => startReply(m)} hasReply={!!m.reply_to_id} reply={resolveReply(m.reply_to_id)} onJumpReply={jumpToMessage} edited={!!m.edited_at} deleted={!!m.deleted_at} canEdit={mine && !m.id.startsWith("tmp-") && !m.deleted_at && !m.image_url && !m.audio_path && !!m.content.trim()} reactions={m.deleted_at ? [] : interactions.reactionsByMessage[m.id] || []} onReact={(emoji) => interactions.react(m.id, emoji)} onEdit={(content) => editMessage(m, content)} onDeleteForMe={() => hideMessage(m.id)} onDeleteForEveryone={mine ? () => deleteForEveryone(m) : undefined} /></SwipeReply>
                 </div>
               </div>
             );

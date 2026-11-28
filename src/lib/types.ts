@@ -8,6 +8,13 @@ export type Profile = {
   created_at: string;
 };
 
+export type MentionReference = {
+  user_id: string | null;
+  username: string;
+  is_active: boolean;
+  profile: Pick<Profile, "id" | "username" | "full_name" | "avatar_url"> | null;
+};
+
 export type ReactionType = "like" | "love" | "clap" | "fire" | "idea" | "wow";
 export type PostKind = "update" | "win" | "help" | "resource" | "project";
 
@@ -26,7 +33,7 @@ export type Post = {
   likes: { user_id: string; type: ReactionType }[];
   comments: { count: number }[];
   saves: { user_id: string }[];
-  post_mentions?: { user_id: string; profile: Profile | null }[];
+  post_mentions?: MentionReference[];
 };
 
 export type Comment = {
@@ -38,7 +45,7 @@ export type Comment = {
   created_at: string;
   author: Profile;
   comment_likes: { user_id: string }[];
-  comment_mentions?: { user_id: string; profile: Profile | null }[];
+  comment_mentions?: MentionReference[];
 };
 
 export type Group = {
@@ -65,6 +72,7 @@ export type Message = {
   audio_duration_ms?: number | null;
   edited_at?: string | null;
   deleted_at?: string | null;
+  dm_message_mentions?: MentionReference[];
 };
 
 export type GroupMessage = {
@@ -79,6 +87,7 @@ export type GroupMessage = {
   audio_duration_ms?: number | null;
   edited_at?: string | null;
   deleted_at?: string | null;
+  group_message_mentions?: MentionReference[];
 };
 
 export type GroupLite = { id: string; name: string; description?: string; color: string; icon: string; avatar_url?: string | null; created_by?: string };
@@ -124,6 +133,6 @@ export type Stats = {
 };
 
 export const POST_SELECT =
-  "*, author:profiles!posts_author_id_fkey(*), group:groups(id,name,color,icon), likes(user_id,type), comments(count), saves(user_id), post_mentions(user_id,profile:profiles(id,username,full_name,avatar_url))";
+  "*, author:profiles!posts_author_id_fkey(*), group:groups(id,name,color,icon), likes(user_id,type), comments(count), saves(user_id), post_mentions(user_id,username,is_active,profile:profiles(id,username,full_name,avatar_url))";
 
-export const COMMENT_SELECT = "*, author:profiles!comments_author_id_fkey(*), comment_likes(user_id), comment_mentions(user_id,profile:profiles(id,username,full_name,avatar_url))";
+export const COMMENT_SELECT = "*, author:profiles!comments_author_id_fkey(*), comment_likes(user_id), comment_mentions(user_id,username,is_active,profile:profiles(id,username,full_name,avatar_url))";

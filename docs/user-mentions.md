@@ -9,7 +9,9 @@ La migration `007_user_mentions.sql` ajoute quatre relations explicites par UUID
 - `dm_message_mentions`
 - `group_message_mentions`
 
-Chaque relation est supprimée en cascade avec son contenu. Les index permettent de retrouver rapidement les mentions d'un utilisateur.
+Chaque relation conserve le pseudo exact utilisé et son UUID. Le pseudo est unique par contenu ; une modification réactive la ligne existante au lieu de la rattacher au propriétaire actuel du pseudo. Si le profil est supprimé, l'UUID devient nul et le texte reste visible sans lien.
+
+Les relations des contenus supprimés sont supprimées en cascade. Les messages supprimés logiquement conservent leur historique d'alias pour empêcher une nouvelle notification, mais désactivent les mentions, retirent leurs notifications et n'exposent plus leurs relations au rendu.
 
 ## Recherche
 
@@ -29,10 +31,13 @@ Les triggers SQL synchronisent les relations après insertion ou modification du
 - déduplication entre plusieurs occurrences ;
 - maximum initial de dix utilisateurs distincts ;
 - aucune auto-mention ;
-- absence de notification répétée si une mention reste présente lors d'une modification ;
+- pas de notification répétée après édition, retrait puis réintroduction de la même mention ;
+- maximum de cinq notifications de mention par paire auteur/destinataire sur dix minutes ;
 - notification liée à la publication, au commentaire ou au message concerné.
 
-Les mentions dans les conversations de groupe sont limitées aux membres du groupe. Les mentions dans les conversations privées sont limitées aux participants.
+Les lectures des mentions suivent les autorisations du contenu : les publications/commentaires de groupe et leurs mentions sont réservés aux membres, les messages privés aux participants de la conversation, et les messages de groupe aux membres actifs. Les insertions de relations sont exclusivement effectuées par les triggers SQL, sans privilège d'écriture client.
+
+Les fonctions de synchronisation et de résolution sont réservées au propriétaire SQL et aux triggers. Seule la RPC `search_mentions` est exposée aux utilisateurs authentifiés ; les helpers de membership historiques restent exécutables car les politiques RLS existantes les invoquent.
 
 ## Déploiement
 

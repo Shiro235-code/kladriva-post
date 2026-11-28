@@ -13,6 +13,7 @@ import { Bubble, CHAT_BG, ChatComposer, DaySeparator, GroupAvatar, ImageViewer, 
 import { GroupInfo } from "./GroupInfo";
 import { cleanupUnpublishedVoice, queueUnpublishedVoice, uploadVoice, voiceObjectPath, type VoicePayload } from "./VoiceMessage";
 import { useMessageInteractions } from "./MessageInteractions";
+import { fetchGroupMessageWithMentions } from "@/lib/mention-message-data";
 
 /**
  * Discussion de groupe façon WhatsApp : nom coloré de l'expéditeur, bulles groupées,
@@ -104,7 +105,9 @@ export function GroupChat({
       const loadedMembers = await loadMembers();
       if (!alive) return;
       if (!loadedMembers.some((member) => member.id === uid)) { setLoading(false); return; }
-      const { data } = await sb().from("group_messages").select("*").eq("group_id", group.id).order("created_at", { ascending: false }).limit(500);
+      const { data } = await sb().from("group_messages")
+        .select("*, group_message_mentions(user_id,username,is_active,profile:profiles(id,username,full_name,avatar_url))")
+        .eq("group_id", group.id).order("created_at", { ascending: false }).limit(500);
       if (!alive) return;
       setMsgs(((data as GroupMessage[]) || []).reverse());
       setLoading(false);
@@ -114,6 +117,9 @@ export function GroupChat({
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` }, (p) => {
           const m = p.new as GroupMessage;
           setMsgs((all) => (all.some((x) => x.id === m.id) ? all : [...all, m]));
+          void fetchGroupMessageWithMentions(m.id).then((full) => {
+            if (full) setMsgs((all) => all.map((item) => item.id === full.id ? full : item));
+          }).catch(() => toast("Les mentions du message n'ont pas pu être chargées.", "error"));
           if (m.sender_id !== uid) {
             setTyping((current) => { const next = { ...current }; delete next[m.sender_id]; return next; });
             markRead();
@@ -122,6 +128,11 @@ export function GroupChat({
         .on("postgres_changes", { event: "UPDATE", schema: "public", table: "group_messages", filter: `group_id=eq.${group.id}` }, (p) => {
           const message = p.new as GroupMessage;
           setMsgs((all) => all.map((item) => item.id === message.id ? message : item));
+          if (!message.deleted_at) {
+            void fetchGroupMessageWithMentions(message.id).then((full) => {
+              if (full) setMsgs((all) => all.map((item) => item.id === full.id ? full : item));
+            }).catch(() => toast("Les mentions du message n'ont pas pu être actualisées.", "error"));
+          }
           if (message.deleted_at) {
             setReplyTo((current) => current?.id === message.id ? null : current);
             setReplyTargets((targets) => ({ ...targets, [message.id]: message }));
@@ -174,7 +185,7 @@ export function GroupChat({
       typingChRef.current = null;
       if (dbChannel) sb().removeChannel(dbChannel);
     };
-  }, [group.id, uid, loadMembers, markRead]);
+  }, [group.id, uid, loadMembers, markRead, toast]);
 
   const typingCount = Object.keys(typing).length;
   useEffect(() => {
@@ -240,6 +251,9 @@ const insert = {
       const { data, error } = await sb().from("group_messages").insert(insert).select().single();
       if (error) throw new Error(error.message.includes("row-level") ? "Tu ne fais plus partie de ce groupe." : "Message non envoyé. Vérifie ta connexion.");
       confirmMessage(data as GroupMessage);
+      void fetchGroupMessageWithMentions(data.id).then((full) => {
+        if (full) confirmMessage(full);
+      }).catch(() => toast("Le message est envoyé, mais ses mentions n'ont pas pu être chargées.", "error"));
       onActivity?.();
       return true;
     } catch (e) {
@@ -394,9 +408,10 @@ const insert = {
                     )}
                     <SwipeReply onReply={() => startReply(m)}><Bubble
                       mine={mine}
-                      text={m.content}
-                      image={m.image_url}
-                      audioPath={m.audio_path}
+                      text={m.deleted_at ? "Message supprimé" : m.content}
+                      mentions={m.group_message_mentions}
+                      image={m.deleted_at ? null : m.image_url}
+                      audioPath={m.deleted_at ? null : m.audio_path}
                       audioDurationMs={m.audio_duration_ms}
                       time={hhmm(m.created_at)}
                       delivery={mine ? (m.id.startsWith("tmp-") ? "pending" : "sent") : undefined}

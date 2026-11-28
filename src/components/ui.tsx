@@ -5,6 +5,8 @@ import { useEffect, useRef } from "react";
 import { X, type LucideIcon } from "lucide-react";
 import { cx, displayName, groupColor, groupGradient, groupIcon, kindOf, tokenize } from "@/lib/utils";
 import type { PostKind } from "@/lib/types";
+import type { MentionReference } from "@/lib/types";
+import { mentionedProfile } from "@/lib/mention-render.mjs";
 
 const TONES = ["#2f4bff", "#ff5470", "#0fa978", "#7b5cff", "#ff8a3d", "#1f6f8b", "#c2410c"];
 
@@ -132,20 +134,14 @@ export function RichText({
 }: {
   text: string;
   className?: string;
-  mentions?: { user_id: string; profile: { id: string; username: string; full_name: string; avatar_url: string | null } | null }[];
+  mentions?: MentionReference[];
 }) {
-  const byUsername = new Map(
-    (mentions || [])
-      .map((mention) => mention.profile)
-      .filter((profile): profile is NonNullable<typeof profile> => !!profile)
-      .map((profile) => [profile.username.toLowerCase(), profile] as const),
-  );
   return (
     <p className={cx("whitespace-pre-wrap break-words", className)}>
       {tokenize(text).map((tk, i) =>
         tk.t === "mention" ? (
           (() => {
-            const profile = byUsername.get(tk.v.slice(1).toLowerCase());
+            const profile = mentionedProfile(mentions, tk.v);
             return profile ? (
               <Link key={i} href={`/u/${profile.username}`} className="text-cobalt font-semibold hover:underline" onClick={(e) => e.stopPropagation()}>
                 {tk.v}
