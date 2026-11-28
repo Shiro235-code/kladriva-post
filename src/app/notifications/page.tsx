@@ -27,7 +27,17 @@ function describe(n: Notification): { icon: React.ReactNode; text: React.ReactNo
     case "reply":
       return { icon: <Reply size={13} className="text-cobalt" />, text: <>{who} a répondu à ton commentaire</>, href: post };
     case "mention":
-      return { icon: <AtSign size={13} className="text-cobalt" />, text: <>{who} t&apos;a mentionné</>, href: post };
+      return {
+        icon: <AtSign size={13} className="text-cobalt" />,
+        text: <>{who} t&apos;a mentionné</>,
+        href: n.data?.conversation_id
+          ? `/messages?c=${encodeURIComponent(n.data.conversation_id)}`
+          : n.data?.group_id
+            ? `/messages?g=${encodeURIComponent(n.data.group_id)}`
+            : n.data?.post_id
+              ? `/p/${n.data.post_id}`
+              : post,
+      };
     case "follow":
       return { icon: <UserPlus size={13} className="text-mint" />, text: <>{who} s&apos;est abonné à toi</>, href: n.actor ? `/u/${n.actor.username}` : "/feed" };
     case "group_join":

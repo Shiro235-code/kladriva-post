@@ -7,6 +7,8 @@ import { compressImage } from "@/lib/media";
 import { sb } from "@/lib/supabase";
 import { createVoiceMessageId, VoiceMessagePlayer, VoiceRecorder, type VoicePayload } from "./VoiceMessage";
 import { MESSAGE_REACTIONS, type MessageReactionEmoji, type ReactionView } from "./MessageInteractions";
+import { MentionTextarea } from "./MentionTextarea";
+import { RichText } from "./ui";
 
 /* ---------------- Avatar de groupe : rond, comme WhatsApp ---------------- */
 export function GroupAvatar({
@@ -80,6 +82,8 @@ export function ChatComposer({
   disabled,
   reply,
   onCancelReply,
+  groupId,
+  conversationId,
 }: {
   placeholder: string;
   onSend: (text: string, image: File | null, replyToId?: string | null, voice?: VoicePayload | null) => Promise<boolean>;
@@ -87,6 +91,8 @@ export function ChatComposer({
   disabled?: boolean;
   reply?: ChatReply | null;
   onCancelReply?: () => void;
+  groupId?: string | null;
+  conversationId?: string | null;
 }) {
   const [text, setText] = useState("");
   const [image, setImage] = useState<{ file: File; url: string } | null>(null);
@@ -180,12 +186,26 @@ export function ChatComposer({
             areaRef.current?.focus();
           }} />
           <div className="flex-1 min-w-0 bg-surface-2 border border-line rounded-[24px] px-4 py-2.5 focus-within:border-cobalt focus-within:bg-surface transition">
-            <textarea ref={areaRef} value={text} rows={1} onChange={(e) => { setText(e.target.value); onTyping?.(); }} onPaste={(e) => {
-              const f = e.clipboardData.files?.[0];
-              if (f?.type.startsWith("image/")) { e.preventDefault(); setImage({ file: f, url: URL.createObjectURL(f) }); }
-            }} onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
-            }} placeholder={placeholder} maxLength={4000} className="w-full bg-transparent outline-none focus-visible:outline-none resize-none text-[15.5px] leading-[1.4] block max-h-[168px] scroll-thin" aria-label="Message" />
+            <MentionTextarea
+              textareaRef={areaRef}
+              value={text}
+              rows={1}
+              onChange={(next) => { setText(next); onTyping?.(); }}
+              onPaste={(e) => {
+                const f = e.clipboardData.files?.[0];
+                if (f?.type.startsWith("image/")) { e.preventDefault(); setImage({ file: f, url: URL.createObjectURL(f) }); }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); }
+              }}
+              placeholder={placeholder}
+              maxLength={4000}
+              ariaLabel="Message"
+              groupId={groupId}
+              conversationId={conversationId}
+              wrapperClassName="min-w-0"
+              className="w-full bg-transparent outline-none focus-visible:outline-none resize-none text-[15.5px] leading-[1.4] block max-h-[168px] scroll-thin"
+            />
           </div>
           <VoiceRecorder draft={voice} onDraft={setVoice} disabled={disabled || busy || !!text.trim() || !!image} onRecordingChange={setRecordingVoice} />
         </> : <VoiceRecorder draft={voice} onDraft={setVoice} disabled={disabled || busy} onRecordingChange={setRecordingVoice} className="min-w-0 flex-1" />}
@@ -435,10 +455,10 @@ export function Bubble({
         </button>
       )}
       {text ? (
-        <p className={cx("text-[15px] leading-[1.38] whitespace-pre-wrap break-words", image && "px-2 pt-1.5 pb-0.5")}>
-          {text}
+        <div className={cx("text-[15px] leading-[1.38]", image && "px-2 pt-1.5 pb-0.5")}>
+          <RichText text={text} className="inline whitespace-pre-wrap break-words" />
           <span className="float-right ml-2.5 mt-[7px]">{meta}</span>
-        </p>
+        </div>
       ) : audioPath ? (
         <div className="flex justify-end px-1 pt-0.5">{meta}</div>
       ) : (

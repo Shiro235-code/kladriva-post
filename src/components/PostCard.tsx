@@ -168,7 +168,7 @@ export function PostCard({ post, onDeleted, startOpen = false }: { post: Post; o
 
         {post.content && (
           <div className="mt-3">
-            <RichText text={shown} className="text-[15.5px] leading-[1.6] text-ink" />
+            <RichText text={shown} mentions={post.post_mentions} className="text-[15.5px] leading-[1.6] text-ink" />
             {long && (
               <button onClick={() => setExpanded((e) => !e)} className="text-sm font-semibold text-muted hover:text-ink mt-1">
                 {expanded ? "Voir moins" : "Voir plus"}

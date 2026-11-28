@@ -439,7 +439,7 @@ const insert = {
         </div>
 
         {isMember || loading ? (
-          <ChatComposer placeholder="Écrire un message" onSend={send} onTyping={sendTyping} disabled={loading} reply={replyTo ? { id: replyTo.id, author: replyTo.sender_id === uid ? displayName(profile) : displayName(byId(replyTo.sender_id)), content: replyTo.content, image_url: replyTo.image_url, audio_path: replyTo.audio_path, audio_duration_ms: replyTo.audio_duration_ms } : null} onCancelReply={() => setReplyTo(null)} />
+          <ChatComposer placeholder="Écrire un message" onSend={send} onTyping={sendTyping} disabled={loading} groupId={group.id} reply={replyTo ? { id: replyTo.id, author: replyTo.sender_id === uid ? displayName(profile) : displayName(byId(replyTo.sender_id)), content: replyTo.content, image_url: replyTo.image_url, audio_path: replyTo.audio_path, audio_duration_ms: replyTo.audio_duration_ms } : null} onCancelReply={() => setReplyTo(null)} />
         ) : (
           <div className="border-t border-line bg-surface px-4 py-4 text-center text-sm text-muted">Tu ne fais plus partie de ce groupe.</div>
         )}

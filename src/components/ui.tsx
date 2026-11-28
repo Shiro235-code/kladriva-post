@@ -125,14 +125,35 @@ export function GroupMark({ color, icon, size = 40, className }: { color?: strin
 }
 
 /** Texte enrichi : @mentions, #hashtags et liens. */
-export function RichText({ text, className }: { text: string; className?: string }) {
+export function RichText({
+  text,
+  className,
+  mentions,
+}: {
+  text: string;
+  className?: string;
+  mentions?: { user_id: string; profile: { id: string; username: string; full_name: string; avatar_url: string | null } | null }[];
+}) {
+  const byUsername = new Map(
+    (mentions || [])
+      .map((mention) => mention.profile)
+      .filter((profile): profile is NonNullable<typeof profile> => !!profile)
+      .map((profile) => [profile.username.toLowerCase(), profile] as const),
+  );
   return (
     <p className={cx("whitespace-pre-wrap break-words", className)}>
       {tokenize(text).map((tk, i) =>
         tk.t === "mention" ? (
-          <Link key={i} href={`/u/${tk.v.slice(1).toLowerCase()}`} className="text-cobalt font-semibold hover:underline" onClick={(e) => e.stopPropagation()}>
-            {tk.v}
-          </Link>
+          (() => {
+            const profile = byUsername.get(tk.v.slice(1).toLowerCase());
+            return profile ? (
+              <Link key={i} href={`/u/${profile.username}`} className="text-cobalt font-semibold hover:underline" onClick={(e) => e.stopPropagation()}>
+                {tk.v}
+              </Link>
+            ) : (
+              <span key={i} className="text-cobalt font-semibold">{tk.v}</span>
+            );
+          })()
         ) : tk.t === "tag" ? (
           <Link key={i} href={`/explorer?q=${encodeURIComponent(tk.v)}`} className="text-cobalt hover:underline" onClick={(e) => e.stopPropagation()}>
             {tk.v}

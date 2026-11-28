@@ -26,6 +26,7 @@ export type Post = {
   likes: { user_id: string; type: ReactionType }[];
   comments: { count: number }[];
   saves: { user_id: string }[];
+  post_mentions?: { user_id: string; profile: Profile | null }[];
 };
 
 export type Comment = {
@@ -37,6 +38,7 @@ export type Comment = {
   created_at: string;
   author: Profile;
   comment_likes: { user_id: string }[];
+  comment_mentions?: { user_id: string; profile: Profile | null }[];
 };
 
 export type Group = {
@@ -101,7 +103,7 @@ export type Notification = {
   post_id: string | null;
   comment_id: string | null;
   group_id: string | null;
-  data: { reaction?: ReactionType; message_id?: string; conversation_id?: string; group_id?: string };
+  data: { reaction?: ReactionType; message_id?: string; conversation_id?: string; group_id?: string; post_id?: string; comment_id?: string; mention?: boolean };
   read: boolean;
   created_at: string;
   actor: Profile | null;
@@ -122,6 +124,6 @@ export type Stats = {
 };
 
 export const POST_SELECT =
-  "*, author:profiles!posts_author_id_fkey(*), group:groups(id,name,color,icon), likes(user_id,type), comments(count), saves(user_id)";
+  "*, author:profiles!posts_author_id_fkey(*), group:groups(id,name,color,icon), likes(user_id,type), comments(count), saves(user_id), post_mentions(user_id,profile:profiles(id,username,full_name,avatar_url))";
 
-export const COMMENT_SELECT = "*, author:profiles!comments_author_id_fkey(*), comment_likes(user_id)";
+export const COMMENT_SELECT = "*, author:profiles!comments_author_id_fkey(*), comment_likes(user_id), comment_mentions(user_id,profile:profiles(id,username,full_name,avatar_url))";

@@ -9,6 +9,7 @@ import { useAuth } from "./AuthProvider";
 import { compressImage, compressVideo } from "@/lib/media";
 import { useToast } from "./Providers";
 import { Avatar, Modal } from "./ui";
+import { MentionTextarea } from "./MentionTextarea";
 
 const MAX_IMAGES = 4;
 const MAX_VIDEO_MB = 50; // après compression
@@ -327,10 +328,10 @@ export function ComposerModal({
                 ))}
               </select>
             </div>
-            <textarea
-              ref={areaRef}
+            <MentionTextarea
+              textareaRef={areaRef}
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={setText}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submit();
               }}
@@ -341,6 +342,8 @@ export function ComposerModal({
               placeholder={PLACEHOLDERS[kind]}
               maxLength={5000}
               rows={4}
+              ariaLabel="Contenu de la publication"
+              groupId={groupId || null}
               className="w-full mt-2 min-h-32 resize-none bg-transparent outline-none focus-visible:outline-none text-[17px] leading-[1.65] placeholder:text-muted"
             />
           </div>

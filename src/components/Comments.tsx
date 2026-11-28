@@ -9,6 +9,7 @@ import { cx, displayName, plural, timeAgo } from "@/lib/utils";
 import { useAuth } from "./AuthProvider";
 import { useToast } from "./Providers";
 import { Avatar, RichText } from "./ui";
+import { MentionTextarea } from "./MentionTextarea";
 
 export function Comments({ postId, postAuthorId, onCount }: { postId: string; postAuthorId: string; onCount: (n: number) => void }) {
   const { session, profile } = useAuth();
@@ -133,7 +134,7 @@ export function Comments({ postId, postAuthorId, onCount }: { postId: string; po
               <Link href={`/u/${c.author?.username}`} className="text-[13.5px] font-bold hover:underline">{displayName(c.author)}</Link>
               {c.author_id === postAuthorId && <span className="text-[10.5px] font-bold text-cobalt bg-cobalt-soft rounded px-1.5 py-px">Auteur</span>}
             </div>
-            <RichText text={c.content} className="text-[14.5px] leading-snug" />
+            <RichText text={c.content} mentions={c.comment_mentions} className="text-[14.5px] leading-snug" />
           </div>
           <div className="flex items-center gap-3.5 text-[12.5px] text-muted mt-1 ml-2 font-semibold">
             <span className="font-normal">{timeAgo(c.created_at)}</span>
@@ -197,12 +198,13 @@ export function Comments({ postId, postAuthorId, onCount }: { postId: string; po
           <div className="flex items-end gap-2">
             <Avatar profile={profile} size={34} />
             <div className="flex-1 flex items-end bg-surface-2 rounded-[20px] pl-4 pr-1.5 py-1.5 border border-transparent focus-within:border-cobalt focus-within:bg-surface transition">
-              <textarea
-                ref={inputRef}
+              <MentionTextarea
+                textareaRef={inputRef}
                 value={text}
-                aria-label={replyTo ? `Répondre à ${replyTo.name}` : "Écrire un commentaire"}
+                ariaLabel={replyTo ? `Répondre à ${replyTo.name}` : "Écrire un commentaire"}
                 rows={1}
-                onChange={(e) => setText(e.target.value)}
+                onChange={setText}
+                wrapperClassName="flex-1"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();

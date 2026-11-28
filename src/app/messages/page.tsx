@@ -604,7 +604,7 @@ const insert = {
         <div ref={endRef} />
         {showRecent && <button type="button" onClick={() => { nearBottom.current = true; setShowRecent(false); endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }} className="sticky bottom-3 self-end z-10 btn btn-soft !rounded-full !px-3 !py-2 shadow-[var(--shadow-pop)]"><ArrowDown size={16} /> Messages récents</button>}
       </div>
-      <ChatComposer placeholder="Écrire un message" onSend={send} onTyping={sendTyping} reply={replyTo ? { id: replyTo.id, author: replyTo.sender_id === uid ? displayName(profile) : displayName(other), content: replyTo.content, image_url: replyTo.image_url, audio_path: replyTo.audio_path, audio_duration_ms: replyTo.audio_duration_ms } : null} onCancelReply={() => setReplyTo(null)} />
+      <ChatComposer placeholder="Écrire un message" onSend={send} onTyping={sendTyping} conversationId={convId} reply={replyTo ? { id: replyTo.id, author: replyTo.sender_id === uid ? displayName(profile) : displayName(other), content: replyTo.content, image_url: replyTo.image_url, audio_path: replyTo.audio_path, audio_duration_ms: replyTo.audio_duration_ms } : null} onCancelReply={() => setReplyTo(null)} />
       <ImageViewer src={viewer} onClose={() => setViewer(null)} />
     </div>
   );
